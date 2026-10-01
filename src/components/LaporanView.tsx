@@ -12,6 +12,10 @@ import {
   Save,
   Plus,
   Trash2,
+  Search,
+  X,
+  SlidersHorizontal,
+  Calendar,
 } from 'lucide-react';
 
 interface LaporanViewProps {
@@ -25,6 +29,33 @@ interface LaporanViewProps {
 }
 
 type Timeframe = 'today' | '7days' | 'month' | 'all';
+type PaymentFilter = 'all' | 'tunai' | 'qris' | 'transfer' | 'debit';
+type StatusFilter = 'all' | 'lunas' | 'belum';
+
+const FilterChip: React.FC<{
+  label: string;
+  onRemove: () => void;
+  isDark: boolean;
+}> = ({ label, onRemove, isDark }) => (
+  <span
+    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${
+      isDark
+        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60'
+        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    }`}
+  >
+    {label}
+    <button
+      type="button"
+      onClick={onRemove}
+      className={`rounded-full p-0.5 ${
+        isDark ? 'hover:bg-emerald-900/60' : 'hover:bg-emerald-100'
+      }`}
+    >
+      <X className="w-2.5 h-2.5" />
+    </button>
+  </span>
+);
 
 export const LaporanView: React.FC<LaporanViewProps> = ({
   orders,
@@ -37,6 +68,15 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
 }) => {
   const isDark = theme === 'dark';
   const [timeframe, setTimeframe] = useState<Timeframe>('all');
+
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [isCustomRange, setIsCustomRange] = useState(false);
 
   // Edit invoice (admin only)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -175,34 +215,73 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   };
 
   // Filter orders by timeframe (pakai waktu lokal / WIB)
-  const filteredOrders = useMemo(() => {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  // Filter orders by timeframe + search + payment + status + custom range
+const filteredOrders = useMemo(() => {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-    return orders.filter(order => {
-      const orderDate = new Date(order.createdAt);
+  const q = searchQuery.trim().toLowerCase();
+
+  return orders.filter(order => {
+    const orderDate = new Date(order.createdAt);
+
+    // Timeframe
+    if (isCustomRange) {
+      // Custom range: start & end (format YYYY-MM-DD)
+      if (customStart) {
+        const start = new Date(customStart + 'T00:00:00');
+        if (orderDate < start) return false;
+      }
+      if (customEnd) {
+        const end = new Date(customEnd + 'T23:59:59');
+        if (orderDate > end) return false;
+      }
+    } else {
       if (timeframe === 'today') {
-        const orderStr = `${orderDate.getFullYear()}-${String(
-          orderDate.getMonth() + 1
-        ).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
-        return orderStr === todayStr;
-      }
-      if (timeframe === '7days') {
-        const diffDays =
-          (now.getTime() - orderDate.getTime()) / (1000 * 3600 * 24);
-        return diffDays >= 0 && diffDays <= 7;
-      }
-      if (timeframe === 'month') {
-        return (
+        const orderStr = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}-${String(orderDate.getDate()).padStart(2, '0')}`;
+        if (orderStr !== todayStr) return false;
+      } else if (timeframe === '7days') {
+        const diffDays = (now.getTime() - orderDate.getTime()) / (1000 * 3600 * 24);
+        if (!(diffDays >= 0 && diffDays <= 7)) return false;
+      } else if (timeframe === 'month') {
+        if (!(
           orderDate.getMonth() === now.getMonth() &&
           orderDate.getFullYear() === now.getFullYear()
-        );
+        )) return false;
       }
-      return true;
-    });
-  }, [orders, timeframe]);
+    }
+
+    // Payment method
+    if (paymentFilter !== 'all' && order.paymentMethod !== paymentFilter) {
+      return false;
+    }
+
+    // Payment status
+    if (statusFilter !== 'all') {
+      const status = (order.paymentStatus || '').toLowerCase();
+      if (statusFilter === 'lunas' && status !== 'lunas' && status !== 'paid') return false;
+      if (statusFilter === 'belum' && status !== 'belum' && status !== 'unpaid' && status !== 'pending') return false;
+    }
+
+    // Search: invoiceNumber atau customerName
+    if (q) {
+      const inv = (order.invoiceNumber || '').toLowerCase();
+      const cus = (order.customerName || '').toLowerCase();
+      if (!inv.includes(q) && !cus.includes(q)) return false;
+    }
+
+    return true;
+  });
+}, [
+  orders,
+  timeframe,
+  isCustomRange,
+  customStart,
+  customEnd,
+  paymentFilter,
+  statusFilter,
+  searchQuery,
+]);
 
   // Aggregate Metrics
   const totalRevenue = useMemo(() => {
@@ -312,6 +391,24 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
+const resetFilters = () => {
+  setSearchQuery('');
+  setPaymentFilter('all');
+  setStatusFilter('all');
+  setCustomStart('');
+  setCustomEnd('');
+  setIsCustomRange(false);
+};
+
+const activeFilterCount = useMemo(() => {
+  let n = 0;
+  if (searchQuery.trim()) n++;
+  if (paymentFilter !== 'all') n++;
+  if (statusFilter !== 'all') n++;
+  if (isCustomRange) n++;
+  return n;
+}, [searchQuery, paymentFilter, statusFilter, isCustomRange]);
+
   return (
     <div className="pb-28 px-4 pt-3 max-w-md mx-auto space-y-4">
       {/* Top Header */}
@@ -370,6 +467,241 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
           </button>
         ))}
       </div>
+
+{/* Filter Panel */}
+<div className="space-y-2">
+  {/* Search + toggle filter */}
+  <div className="flex gap-2">
+    <div
+      className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-xl border ${
+        isDark
+          ? 'bg-neutral-900 border-neutral-800'
+          : 'bg-white border-neutral-200 shadow-xs'
+      }`}
+    >
+      <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        placeholder="Cari no nota / nama..."
+        className={`flex-1 text-xs bg-transparent outline-none ${
+          isDark ? 'text-white placeholder:text-neutral-600' : 'text-neutral-900 placeholder:text-neutral-400'
+        }`}
+      />
+      {searchQuery && (
+        <button
+          type="button"
+          onClick={() => setSearchQuery('')}
+          className="text-neutral-400 hover:text-neutral-600"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+    <button
+      type="button"
+      onClick={() => setShowFilterPanel(v => !v)}
+      className={`relative px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-colors ${
+        showFilterPanel || activeFilterCount > 0
+          ? isDark
+            ? 'bg-white text-neutral-950 border-white'
+            : 'bg-neutral-900 text-white border-neutral-900'
+          : isDark
+            ? 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:bg-neutral-800'
+            : 'bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100 shadow-xs'
+      }`}
+    >
+      <SlidersHorizontal className="w-3.5 h-3.5" />
+      <span>Filter</span>
+      {activeFilterCount > 0 && (
+        <span
+          className={`ml-0.5 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold inline-flex items-center justify-center ${
+            showFilterPanel || activeFilterCount > 0
+              ? isDark
+                ? 'bg-neutral-900 text-white'
+                : 'bg-white text-neutral-900'
+              : 'bg-emerald-500 text-white'
+          }`}
+        >
+          {activeFilterCount}
+        </span>
+      )}
+    </button>
+  </div>
+
+  {/* Active filter chips */}
+  {activeFilterCount > 0 && (
+    <div className="flex flex-wrap gap-1.5">
+      {searchQuery.trim() && (
+        <FilterChip
+          label={`Cari: "${searchQuery}"`}
+          onRemove={() => setSearchQuery('')}
+          isDark={isDark}
+        />
+      )}
+      {paymentFilter !== 'all' && (
+        <FilterChip
+          label={`Bayar: ${paymentFilter.toUpperCase()}`}
+          onRemove={() => setPaymentFilter('all')}
+          isDark={isDark}
+        />
+      )}
+      {statusFilter !== 'all' && (
+        <FilterChip
+          label={`Status: ${statusFilter === 'lunas' ? 'Lunas' : 'Belum Lunas'}`}
+          onRemove={() => setStatusFilter('all')}
+          isDark={isDark}
+        />
+      )}
+      {isCustomRange && (customStart || customEnd) && (
+        <FilterChip
+          label={`${customStart || '...'} → ${customEnd || '...'}`}
+          onRemove={() => {
+            setIsCustomRange(false);
+            setCustomStart('');
+            setCustomEnd('');
+          }}
+          isDark={isDark}
+        />
+      )}
+      <button
+        type="button"
+        onClick={resetFilters}
+        className="text-[10px] text-red-500 hover:text-red-600 font-bold px-2 py-1"
+      >
+        Reset semua
+      </button>
+    </div>
+  )}
+
+  {/* Expandable filter panel */}
+  {showFilterPanel && (
+    <div
+      className={`p-3 rounded-2xl border space-y-3 ${
+        isDark
+          ? 'bg-neutral-900 border-neutral-800'
+          : 'bg-white border-neutral-200 shadow-xs'
+      }`}
+    >
+      {/* Metode bayar */}
+      <div>
+        <label className="text-[10px] text-neutral-500 uppercase font-bold block mb-1.5">
+          Metode Bayar
+        </label>
+        <div className="grid grid-cols-5 gap-1">
+          {(['all', 'tunai', 'qris', 'transfer', 'debit'] as PaymentFilter[]).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setPaymentFilter(m)}
+              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase transition-colors ${
+                paymentFilter === m
+                  ? isDark
+                    ? 'bg-white text-neutral-950'
+                    : 'bg-neutral-900 text-white'
+                  : isDark
+                    ? 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    : 'bg-neutral-100 text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              {m === 'all' ? 'Semua' : m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Status bayar */}
+      <div>
+        <label className="text-[10px] text-neutral-500 uppercase font-bold block mb-1.5">
+          Status Bayar
+        </label>
+        <div className="grid grid-cols-3 gap-1">
+          {([
+            { id: 'all', label: 'Semua' },
+            { id: 'lunas', label: 'Lunas' },
+            { id: 'belum', label: 'Belum' },
+          ] as { id: StatusFilter; label: string }[]).map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setStatusFilter(s.id)}
+              className={`py-1.5 rounded-lg text-[10px] font-bold transition-colors ${
+                statusFilter === s.id
+                  ? isDark
+                    ? 'bg-white text-neutral-950'
+                    : 'bg-neutral-900 text-white'
+                  : isDark
+                    ? 'bg-neutral-800 text-neutral-400 hover:text-white'
+                    : 'bg-neutral-100 text-neutral-500 hover:text-neutral-900'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom date range */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[10px] text-neutral-500 uppercase font-bold">
+            Rentang Tanggal Custom
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setIsCustomRange(v => !v);
+              if (isCustomRange) {
+                setCustomStart('');
+                setCustomEnd('');
+              }
+            }}
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+              isCustomRange
+                ? 'bg-emerald-500 text-white'
+                : isDark
+                  ? 'bg-neutral-800 text-neutral-400'
+                  : 'bg-neutral-100 text-neutral-500'
+            }`}
+          >
+            {isCustomRange ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        {isCustomRange && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[9px] text-neutral-500 block mb-0.5">Dari</label>
+              <input
+                type="date"
+                value={customStart}
+                onChange={e => setCustomStart(e.target.value)}
+                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                  isDark
+                    ? 'bg-neutral-800 text-white border-neutral-700'
+                    : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[9px] text-neutral-500 block mb-0.5">Sampai</label>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={e => setCustomEnd(e.target.value)}
+                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                  isDark
+                    ? 'bg-neutral-800 text-white border-neutral-700'
+                    : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+                }`}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
+</div>
 
       {/* Main KPI Cards Grid */}
       <div className="grid grid-cols-2 gap-2.5">
@@ -608,13 +940,14 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             : 'bg-white border-neutral-200 shadow-xs'
         }`}
       >
-        <h3
-          className={`text-xs font-bold ${
-            isDark ? 'text-white' : 'text-neutral-900'
-          }`}
-        >
-          Daftar Transaksi Periode Ini
-        </h3>
+        <div className="flex items-center justify-between">
+  <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+    Daftar Transaksi
+  </h3>
+  <span className="text-[10px] text-neutral-400 font-mono font-bold">
+    {filteredOrders.length} nota
+  </span>
+</div>
 
         <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
           {filteredOrders.length === 0 ? (
