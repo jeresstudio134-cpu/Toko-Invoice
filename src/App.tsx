@@ -174,12 +174,12 @@ export default function App() {
       clearCart();
       setActiveTab('nota');
 
-      const [updatedProducts, updatedCustomers] = await Promise.all([
-        ApiService.getProducts(),
-        ApiService.getCustomers(),
-      ]);
-      setProducts(updatedProducts);
-      setCustomers(updatedCustomers);
+      Promise.all([ApiService.getProducts(), ApiService.getCustomers()])
+        .then(([updatedProducts, updatedCustomers]) => {
+          setProducts(updatedProducts);
+          setCustomers(updatedCustomers);
+        })
+        .catch(err => console.error('Failed refreshing data:', err));
     } catch (err: any) {
       console.error('Order creation failed:', err);
       alert('Gagal memproses transaksi ke database server: ' + err.message);

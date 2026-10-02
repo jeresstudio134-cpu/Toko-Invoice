@@ -223,10 +223,12 @@ export class ServerDatabase {
 
   private async setup(): Promise<void> {
     const sql = getSql();
-    await sql`CREATE TABLE IF NOT EXISTS app_products (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
-    await sql`CREATE TABLE IF NOT EXISTS app_customers (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
-    await sql`CREATE TABLE IF NOT EXISTS app_orders (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
-    await sql`CREATE TABLE IF NOT EXISTS app_settings (id INT PRIMARY KEY, data JSONB NOT NULL)`;
+    await Promise.all([
+      sql`CREATE TABLE IF NOT EXISTS app_products (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`,
+      sql`CREATE TABLE IF NOT EXISTS app_customers (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`,
+      sql`CREATE TABLE IF NOT EXISTS app_orders (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`,
+      sql`CREATE TABLE IF NOT EXISTS app_settings (id INT PRIMARY KEY, data JSONB NOT NULL)`,
+    ]);
 
     const existing = await sql`SELECT id FROM app_settings WHERE id = 1`;
     if (existing.length > 0) return;
@@ -439,22 +441,25 @@ export class ServerDatabase {
     if (updates.items !== undefined) {
       if (updates.items.length === 0) throw new Error('Invoice minimal harus punya 1 item.');
 
-      // Kembalikan stok item lama
-      for (const item of current.items) {
-        const prod = await this.getProductById(item.productId);
-        if (prod) {
-          prod.stock += item.quantity;
-          await this.saveProduct(prod);
-        }
+      // Hitung selisih stok per produk, hanya yang berubah yang diproses
+      const delta = new Map<string, number>();
+      for (const it of current.items) {
+        delta.set(it.productId, (delta.get(it.productId) || 0) + it.quantity);
       }
-      // Potong stok item baru
-      for (const item of updates.items) {
-        const prod = await this.getProductById(item.productId);
-        if (prod) {
-          prod.stock = Math.max(0, prod.stock - item.quantity);
-          await this.saveProduct(prod);
-        }
+      for (const it of updates.items) {
+        delta.set(it.productId, (delta.get(it.productId) || 0) - it.quantity);
       }
+      await Promise.all(
+        [...delta.entries()]
+          .filter(([, d]) => d !== 0)
+          .map(async ([productId, d]) => {
+            const prod = await this.getProductById(productId);
+            if (prod) {
+              prod.stock = Math.max(0, prod.stock + d);
+              await this.saveProduct(prod);
+            }
+          })
+      );
 
       // Subtotal dihitung ulang di server
       next.items = updates.items.map(it => ({
