@@ -29,12 +29,49 @@ export async function resizeImage(file: File, maxSize = 1600, quality = 0.85): P
   }
 }
 
-// Upload unsigned langsung dari browser ke Cloudinary
+// Upload gambar ke Cloudinary melalui server endpoint /api/upload (mendukung CLOUDINARY_URL di Vercel)
+// atau fallback langsung ke Cloudinary jika tersedia preset unsigned di browser
 export async function uploadImage(
   file: File,
   cloudName?: string,
   uploadPreset?: string
 ): Promise<string> {
+  const blob = await resizeImage(file);
+
+  // 1. Prioritaskan upload lewat backend /api/upload (menggunakan CLOUDINARY_URL yang diisi di Vercel)
+  try {
+    const base64DataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: base64DataUrl }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.secure_url) {
+        return data.secure_url;
+      }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      // Jika server memberikan error spesifik, tangkap
+      if (errData?.error && !errData.error.includes('belum dikonfigurasi')) {
+        throw new Error(errData.error);
+      }
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('belum dikonfigurasi')) {
+      throw err;
+    }
+  }
+
+  // 2. Fallback: Upload langsung dari browser jika memakai VITE_CLOUDINARY_*
   const cName = (
     cloudName ||
     (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME ||
@@ -48,23 +85,23 @@ export async function uploadImage(
     ''
   ).trim();
 
-  if (!cName || !cPreset) {
-    throw new Error(
-      'Cloud Name & Upload Preset Cloudinary belum diisi di Environment Variables (VITE_CLOUDINARY_CLOUD_NAME & VITE_CLOUDINARY_UPLOAD_PRESET).'
-    );
-  }
-  const blob = await resizeImage(file);
-  const form = new FormData();
-  form.append('file', blob, file.name.replace(/\.[^.]+$/, '') + '.jpg');
-  form.append('upload_preset', cPreset);
+  if (cName && cPreset) {
+    const form = new FormData();
+    form.append('file', blob, file.name.replace(/\.[^.]+$/, '') + '.jpg');
+    form.append('upload_preset', cPreset);
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cName}/image/upload`, {
-    method: 'POST',
-    body: form,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error?.message || 'Upload ke Cloudinary gagal');
-  return data.secure_url as string;
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cName}/image/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error?.message || 'Upload ke Cloudinary gagal');
+    return data.secure_url as string;
+  }
+
+  throw new Error(
+    'CLOUDINARY_URL di Environment Variables Vercel belum aktif atau tidak valid. Pastikan Redeploy setelah menambah variabel.'
+  );
 }
 
 // Minta Cloudinary mengirim versi yang lebih kecil & ringan

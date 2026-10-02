@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { serverDb } from './server/db.ts';
 
@@ -8,7 +9,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 type Handler = (req: express.Request, res: express.Response) => Promise<any>;
 const wrap =
@@ -19,6 +21,89 @@ const wrap =
       res.status(500).json({ error: err.message });
     });
   };
+
+// Parse CLOUDINARY_URL (e.g. cloudinary://api_key:api_secret@cloud_name)
+function parseCloudinaryUrl(rawUrl?: string) {
+  if (!rawUrl) return null;
+  const clean = rawUrl.trim().replace(/^['"]|['"]$/g, '');
+  const match = clean.match(/^cloudinary:\/\/([^:]+):([^@]+)@([^/\s?]+)/);
+  if (match) {
+    return {
+      apiKey: match[1],
+      apiSecret: match[2],
+      cloudName: match[3],
+    };
+  }
+  return null;
+}
+
+// Upload Foto Produk via Cloudinary
+app.post('/api/upload', wrap(async (req, res) => {
+  const { file } = req.body;
+  if (!file) {
+    return res.status(400).json({ error: 'Data file gambar tidak ditemukan.' });
+  }
+
+  // 1. Cek dari CLOUDINARY_URL (format resmi Cloudinary di Vercel / server)
+  const cloudinaryUrl =
+    process.env.CLOUDINARY_URL ||
+    process.env.VITE_CLOUDINARY_URL;
+  const creds = parseCloudinaryUrl(cloudinaryUrl);
+
+  if (creds && creds.apiKey && creds.apiSecret && creds.cloudName) {
+    const timestamp = Math.round(Date.now() / 1000);
+    const signature = crypto
+      .createHash('sha1')
+      .update(`timestamp=${timestamp}${creds.apiSecret}`)
+      .digest('hex');
+
+    const cRes = await fetch(`https://api.cloudinary.com/v1_1/${creds.cloudName}/image/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file,
+        api_key: creds.apiKey,
+        timestamp,
+        signature,
+      }),
+    });
+
+    const data = await cRes.json();
+    if (!cRes.ok || !data.secure_url) {
+      throw new Error(data?.error?.message || 'Gagal mengunggah foto ke Cloudinary.');
+    }
+    return res.json({ secure_url: data.secure_url, url: data.url });
+  }
+
+  // 2. Alternatif jika memakai CLOUDINARY_CLOUD_NAME + UPLOAD_PRESET
+  const cloudName =
+    process.env.CLOUDINARY_CLOUD_NAME ||
+    process.env.VITE_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset =
+    process.env.CLOUDINARY_UPLOAD_PRESET ||
+    process.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+  if (cloudName && uploadPreset) {
+    const cRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file,
+        upload_preset: uploadPreset,
+      }),
+    });
+    const data = await cRes.json();
+    if (!cRes.ok || !data.secure_url) {
+      throw new Error(data?.error?.message || 'Gagal mengunggah foto ke Cloudinary.');
+    }
+    return res.json({ secure_url: data.secure_url, url: data.url });
+  }
+
+  return res.status(500).json({
+    error:
+      'CLOUDINARY_URL belum dikonfigurasi di Environment Variables server/Vercel.',
+  });
+}));
 
 // Health check (sekalian cek koneksi database)
 app.get('/api/health', async (req, res) => {
