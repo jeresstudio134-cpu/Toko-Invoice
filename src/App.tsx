@@ -33,6 +33,7 @@ export default function App() {
     adminPin: '1234',
   });
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('katalog');
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -65,6 +66,8 @@ export default function App() {
       }
     } catch (e) {
       console.error('Error fetching database:', e);
+    } finally {
+      setIsLoaded(true);
     }
   };
 
@@ -269,6 +272,14 @@ export default function App() {
 
   const totalCartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const isDark = theme === 'dark';
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
+        <span className="text-xs text-neutral-400 font-mono">Memuat...</span>
+      </div>
+    );
+  }
 
   return (
     <div
