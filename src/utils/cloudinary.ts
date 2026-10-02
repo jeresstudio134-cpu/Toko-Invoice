@@ -32,18 +32,33 @@ export async function resizeImage(file: File, maxSize = 1600, quality = 0.85): P
 // Upload unsigned langsung dari browser ke Cloudinary
 export async function uploadImage(
   file: File,
-  cloudName: string,
-  uploadPreset: string
+  cloudName?: string,
+  uploadPreset?: string
 ): Promise<string> {
-  if (!cloudName || !uploadPreset) {
-    throw new Error('Cloud Name & Upload Preset Cloudinary belum diisi (Setelan > Profil Toko).');
+  const cName = (
+    cloudName ||
+    (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME ||
+    (import.meta as any).env?.CLOUDINARY_CLOUD_NAME ||
+    ''
+  ).trim();
+  const cPreset = (
+    uploadPreset ||
+    (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET ||
+    (import.meta as any).env?.CLOUDINARY_UPLOAD_PRESET ||
+    ''
+  ).trim();
+
+  if (!cName || !cPreset) {
+    throw new Error(
+      'Cloud Name & Upload Preset Cloudinary belum diisi di Environment Variables (VITE_CLOUDINARY_CLOUD_NAME & VITE_CLOUDINARY_UPLOAD_PRESET).'
+    );
   }
   const blob = await resizeImage(file);
   const form = new FormData();
   form.append('file', blob, file.name.replace(/\.[^.]+$/, '') + '.jpg');
-  form.append('upload_preset', uploadPreset);
+  form.append('upload_preset', cPreset);
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cName}/image/upload`, {
     method: 'POST',
     body: form,
   });

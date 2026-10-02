@@ -725,43 +725,6 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
             </div>
           </div>
 
-          <div
-            className={`border rounded-2xl p-4 space-y-3 transition-colors ${
-              isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-xs'
-            }`}
-          >
-            <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-              Upload Foto Menu (Cloudinary)
-            </h3>
-            <p className="text-[11px] text-neutral-500 leading-relaxed">
-              Diisi sekali saja. Buat Upload Preset di Cloudinary dengan Signing mode: Unsigned.
-            </p>
-            <div>
-              <label className="text-[11px] text-neutral-500 block mb-1">Cloud Name</label>
-              <input
-                type="text"
-                value={cloudName}
-                onChange={e => setCloudName(e.target.value)}
-                placeholder="cth: my-store-cloud"
-                className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                  isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
-                }`}
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-neutral-500 block mb-1">Upload Preset (Unsigned)</label>
-              <input
-                type="text"
-                value={uploadPreset}
-                onChange={e => setUploadPreset(e.target.value)}
-                placeholder="cth: ml_default"
-                className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                  isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
-                }`}
-              />
-            </div>
-          </div>
-
           <button
             type="submit"
             className={`w-full py-3 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-transform shadow-sm ${
