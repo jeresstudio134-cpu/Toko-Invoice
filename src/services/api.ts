@@ -93,9 +93,15 @@ export const ApiService = {
     return res.json();
   },
 
+  async deleteOrder(id: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/orders/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete order');
+    const data = await res.json();
+    return data.success;
+  },
+
   // Store Settings
-  async getSettings(): Promise<StoreSettings> {
-    const res = await fetch(`${API_BASE}/settings`);
+  async getSettings(): Promise<StoreSettings> {    const res = await fetch(`${API_BASE}/settings`);
     if (!res.ok) throw new Error('Failed to fetch settings');
     return res.json();
   },

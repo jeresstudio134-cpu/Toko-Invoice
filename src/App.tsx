@@ -257,13 +257,9 @@ export default function App() {
   // Handler untuk hapus order
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      // Kalau ApiService punya deleteOrder:
-      // await ApiService.deleteOrder(orderId);
-
+      await ApiService.deleteOrder(orderId);
       setOrders(prev => prev.filter(o => o.id !== orderId));
-      if (activeOrder?.id === orderId) {
-        setActiveOrder(null);
-      }
+      setActiveOrder(prev => (prev && prev.id === orderId ? null : prev));
     } catch (err: any) {
       console.error('Failed deleting order:', err);
       alert('Gagal menghapus invoice: ' + err.message);

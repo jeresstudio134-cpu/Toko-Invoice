@@ -767,7 +767,14 @@ export class ServerDatabase {
       cash_change = ${next.cashChange ?? null}, notes = ${next.notes ?? null}
       WHERE id = ${id}`;
 
-    return next;
+   return next;
+  }
+
+  public async deleteOrder(id: string): Promise<boolean> {
+    const sql = await this.db();
+    // order_items ikut terhapus otomatis (ON DELETE CASCADE)
+    const r = await sql`DELETE FROM orders WHERE id = ${id} RETURNING id`;
+    return r.length > 0;
   }
 
   // -------------------------
