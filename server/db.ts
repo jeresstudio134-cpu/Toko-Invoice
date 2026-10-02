@@ -22,6 +22,9 @@ const num = (v: any) => (v === null || v === undefined ? 0 : Number(v));
 const numOrUndef = (v: any) => (v === null || v === undefined ? undefined : Number(v));
 const iso = (v: any) => (v ? new Date(v).toISOString() : new Date().toISOString());
 
+const imagesOf = (p: Product): string[] =>
+  (p.images && p.images.length ? p.images : p.imageUrl ? [p.imageUrl] : []).filter(Boolean);
+
 const toProduct = (r: any): Product =>
   ({
     id: r.id,
@@ -32,6 +35,8 @@ const toProduct = (r: any): Product =>
     stock: num(r.stock),
     unit: r.unit || 'pcs',
     imageUrl: r.image_url || undefined,
+    images:
+      Array.isArray(r.images) && r.images.length ? r.images : r.image_url ? [r.image_url] : [],
     sku: r.sku || undefined,
     description: r.description || undefined,
     isActive: r.is_active !== false,
@@ -467,6 +472,7 @@ export class ServerDatabase {
     // Kolom urutan (tabel hasil Sinkronkan lama tidak punya)
     await Promise.all([
       sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS seq BIGSERIAL`,
+      sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb`,
       sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS seq BIGSERIAL`,
       sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS seq BIGSERIAL`,
       sql`CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)`,
@@ -536,18 +542,21 @@ export class ServerDatabase {
   private async insertProduct(p: Product): Promise<void> {
     const sql = getSql();
     if (!sql) return;
-    await sql`INSERT INTO products (id, name, category, price, cost_price, stock, unit, image_url, sku, description, is_active)
+    const imgs = imagesOf(p);
+    await sql`INSERT INTO products (id, name, category, price, cost_price, stock, unit, image_url, images, sku, description, is_active)
       VALUES (${p.id}, ${p.name}, ${p.category}, ${p.price}, ${p.costPrice || 0}, ${p.stock}, ${p.unit || 'pcs'},
-       ${p.imageUrl ?? null}, ${p.sku ?? null}, ${p.description ?? null}, ${p.isActive !== false})
+       ${imgs[0] ?? null}, ${JSON.stringify(imgs)}::jsonb, ${p.sku ?? null}, ${p.description ?? null}, ${p.isActive !== false})
       ON CONFLICT (id) DO NOTHING`;
   }
 
   private async saveProduct(p: Product): Promise<void> {
     const sql = getSql();
     if (!sql) return;
+    const imgs = imagesOf(p);
     await sql`UPDATE products SET
       name = ${p.name}, category = ${p.category}, price = ${p.price}, cost_price = ${p.costPrice || 0},
-      stock = ${p.stock}, unit = ${p.unit || 'pcs'}, image_url = ${p.imageUrl ?? null}, sku = ${p.sku ?? null},
+      stock = ${p.stock}, unit = ${p.unit || 'pcs'}, image_url = ${imgs[0] ?? null},
+      images = ${JSON.stringify(imgs)}::jsonb, sku = ${p.sku ?? null},
       description = ${p.description ?? null}, is_active = ${p.isActive !== false}
       WHERE id = ${p.id}`;
   }

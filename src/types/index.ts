@@ -7,6 +7,7 @@ export interface Product {
   stock: number;
   unit: string; // pcs, porsi, cup, botol, pack
   imageUrl?: string;
+  images?: string[];
   sku?: string;
   description?: string;
   isActive: boolean;

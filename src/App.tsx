@@ -203,12 +203,32 @@ export default function App() {
   };
 
   const handleUpdateProducts = async (newProducts: Product[]) => {
+    const before = products;
     setProducts(newProducts);
     try {
-      const prodList = await ApiService.getProducts();
-      setProducts(prodList);
-    } catch (err) {
-      console.error('Failed refreshing products:', err);
+      const beforeMap = new Map(before.map(p => [p.id, p]));
+      const newIds = new Set(newProducts.map(p => p.id));
+      const ops: Promise<unknown>[] = [];
+
+      for (const p of newProducts) {
+        const old = beforeMap.get(p.id);
+        if (!old) ops.push(ApiService.createProduct(p));
+        else if (JSON.stringify(old) !== JSON.stringify(p)) ops.push(ApiService.updateProduct(p.id, p));
+      }
+      for (const p of before) {
+        if (!newIds.has(p.id)) ops.push(ApiService.deleteProduct(p.id));
+      }
+
+      await Promise.all(ops);
+      setProducts(await ApiService.getProducts());
+    } catch (err: any) {
+      console.error('Failed saving products:', err);
+      alert('Gagal menyimpan menu ke database: ' + err.message);
+      try {
+        setProducts(await ApiService.getProducts());
+      } catch {
+        setProducts(before);
+      }
     }
   };
 

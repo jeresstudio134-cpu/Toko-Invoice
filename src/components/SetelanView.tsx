@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Product, Customer, Order, StoreSettings } from '../types';
 import { ApiService } from '../services/api';
 import { formatRupiah } from '../utils/format';
+import { uploadImage, optimizedUrl } from '../utils/cloudinary';
 import {
   Store,
   Database,
@@ -98,7 +99,11 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
   const [pCostPrice, setPCostPrice] = useState<number>(10000);
   const [pStock, setPStock] = useState<number>(25);
   const [pUnit, setPUnit] = useState('cup');
-  const [pImageUrl, setPImageUrl] = useState('');
+  const MAX_IMAGES = 8;
+  const [pImages, setPImages] = useState<string[]>([]);
+  
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [pDescription, setPDescription] = useState('');
 
   const targetAdminPin = settings.adminPin || '1234';
@@ -234,7 +239,9 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
     setPCostPrice(10000);
     setPStock(30);
     setPUnit('pcs');
-    setPImageUrl('');
+    setPImages([]);
+    
+    setUploadError('');
     setPDescription('');
     setShowProductModal(true);
   };
@@ -247,9 +254,38 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
     setPCostPrice(prod.costPrice || 0);
     setPStock(prod.stock);
     setPUnit(prod.unit);
-    setPImageUrl(prod.imageUrl || '');
+    setPImages(prod.images && prod.images.length ? prod.images : prod.imageUrl ? [prod.imageUrl] : []);
+    
+    setUploadError('');
     setPDescription(prod.description || '');
     setShowProductModal(true);
+  };
+
+  const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).slice(0, Math.max(0, MAX_IMAGES - pImages.length));
+    e.target.value = '';
+    if (files.length === 0) {
+      setUploadError(`Maksimal ${MAX_IMAGES} foto per menu.`);
+      return;
+    }
+    setUploadError('');
+    setIsUploading(true);
+    const results = await Promise.allSettled(
+      files.map(f => uploadImage(f, cloudName.trim(), uploadPreset.trim()))
+    );
+    const urls = results
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+      .map(r => r.value);
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (urls.length) setPImages(prev => [...prev, ...urls]);
+    if (failed) setUploadError(String(failed.reason?.message || failed.reason));
+    setIsUploading(false);
+  };
+
+  
+
+  const handleMakeCover = (i: number) => {
+    setPImages(prev => [prev[i], ...prev.filter((_, idx) => idx !== i)]);
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
@@ -267,7 +303,8 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
               costPrice: Number(pCostPrice) || 0,
               stock: Number(pStock) || 0,
               unit: pUnit.trim() || 'pcs',
-              imageUrl: pImageUrl.trim() || undefined,
+              imageUrl: pImages[0] || undefined,
+              images: pImages,
               description: pDescription.trim() || undefined,
             }
           : p
@@ -282,7 +319,8 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
         costPrice: Number(pCostPrice) || 0,
         stock: Number(pStock) || 0,
         unit: pUnit.trim() || 'pcs',
-        imageUrl: pImageUrl.trim() || undefined,
+        imageUrl: pImages[0] || undefined,
+        images: pImages,
         description: pDescription.trim() || undefined,
         isActive: true,
       };
@@ -687,6 +725,43 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
             </div>
           </div>
 
+          <div
+            className={`border rounded-2xl p-4 space-y-3 transition-colors ${
+              isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-xs'
+            }`}
+          >
+            <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+              Upload Foto Menu (Cloudinary)
+            </h3>
+            <p className="text-[11px] text-neutral-500 leading-relaxed">
+              Diisi sekali saja. Buat Upload Preset di Cloudinary dengan Signing mode: Unsigned.
+            </p>
+            <div>
+              <label className="text-[11px] text-neutral-500 block mb-1">Cloud Name</label>
+              <input
+                type="text"
+                value={cloudName}
+                onChange={e => setCloudName(e.target.value)}
+                placeholder="cth: my-store-cloud"
+                className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
+                  isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+                }`}
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-neutral-500 block mb-1">Upload Preset (Unsigned)</label>
+              <input
+                type="text"
+                value={uploadPreset}
+                onChange={e => setUploadPreset(e.target.value)}
+                placeholder="cth: ml_default"
+                className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
+                  isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+                }`}
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
             className={`w-full py-3 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-transform shadow-sm ${
@@ -1014,17 +1089,70 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
 
               <div>
                 <label className="text-[11px] text-neutral-500 block mb-1">
-                  URL Foto Produk (Cloudinary / Web Link)
+                  Foto Produk ({pImages.length}/{MAX_IMAGES}) · foto pertama jadi sampul
                 </label>
-                <input
-                  type="url"
-                  value={pImageUrl}
-                  onChange={e => setPImageUrl(e.target.value)}
-                  placeholder="https://res.cloudinary.com/..."
-                  className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                    isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
-                  }`}
-                />
+                <div className="grid grid-cols-4 gap-2">
+                  {pImages.map((src, i) => (
+                    <div
+                      key={`${src}-${i}`}
+                      className={`relative aspect-square rounded-xl overflow-hidden border ${
+                        isDark ? 'border-neutral-700' : 'border-neutral-200'
+                      }`}
+                    >
+                      <img
+                        src={optimizedUrl(src, 200)}
+                        alt={`Foto ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      {i === 0 ? (
+                        <span className="absolute left-1 bottom-1 text-[8px] font-bold px-1 py-0.5 rounded bg-emerald-600 text-white">
+                          Sampul
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleMakeCover(i)}
+                          className="absolute left-1 bottom-1 text-[8px] font-bold px-1 py-0.5 rounded bg-black/60 text-white"
+                        >
+                          Jadikan sampul
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPImages(prev => prev.filter((_, idx) => idx !== i))}
+                        aria-label="Hapus foto"
+                        className="absolute right-1 top-1 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+
+                  {pImages.length < MAX_IMAGES && (
+                    <label
+                      className={`aspect-square rounded-xl border border-dashed flex flex-col items-center justify-center gap-1 text-[10px] font-bold cursor-pointer ${
+                        isDark
+                          ? 'border-neutral-600 text-neutral-400 hover:text-white'
+                          : 'border-neutral-300 text-neutral-500 hover:text-neutral-900'
+                      } ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleUploadImages}
+                        disabled={isUploading}
+                      />
+                      <Plus className="w-4 h-4" />
+                      <span>{isUploading ? 'Mengunggah...' : 'Foto'}</span>
+                    </label>
+                  )}
+                </div>
+
+                {uploadError && (
+                  <p className="text-[11px] text-red-500 mt-1.5">{uploadError}</p>
+                )}
               </div>
 
               <div>
@@ -1053,11 +1181,12 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
               </button>
               <button
                 type="submit"
-                className={`flex-1 py-2.5 font-bold rounded-xl text-xs shadow-xs ${
+                disabled={isUploading}
+                className={`flex-1 py-2.5 font-bold rounded-xl text-xs shadow-xs disabled:opacity-50 ${
                   isDark ? 'bg-white text-neutral-950' : 'bg-neutral-900 text-white'
                 }`}
               >
-                Simpan Menu
+                {isUploading ? 'Mengunggah foto...' : 'Simpan Menu'}
               </button>
             </div>
           </form>
