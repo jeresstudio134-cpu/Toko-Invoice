@@ -88,7 +88,7 @@ app.put('/api/orders/:id', wrap(async (req, res) => {
   res.json(updated);
 }));
 
-/app.delete('/api/orders/:id', wrap(async (req, res) => {
+app.delete('/api/orders/:id', wrap(async (req, res) => {
   const ok = await serverDb.deleteOrder(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Order not found' });
   res.json({ success: true });

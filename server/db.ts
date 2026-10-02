@@ -1,10 +1,20 @@
+import fs from 'fs';
+import path from 'path';
 import { neon } from '@neondatabase/serverless';
 import type { Product, Customer, Order, StoreSettings } from '../src/types/index.ts';
 
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DB_FILE = path.join(DATA_DIR, 'database.json');
+
 const getSql = () => {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL belum diisi di Environment Variables Vercel');
-  return neon(url);
+  if (!url || !url.trim()) return null;
+  try {
+    return neon(url);
+  } catch (e) {
+    console.warn('Neon init error:', e);
+    return null;
+  }
 };
 
 // Neon mengembalikan NUMERIC sebagai teks dan waktu sebagai Date, jadi diubah di sini
@@ -291,18 +301,81 @@ const DEFAULT_ORDERS: Order[] = [
   },
 ];
 
+interface DatabaseSchema {
+  settings: StoreSettings;
+  products: Product[];
+  customers: Customer[];
+  orders: Order[];
+}
+
 export class ServerDatabase {
-  private ready: Promise<void> | null = null;
+  private ready: Promise<boolean> | null = null;
+  private localData: DatabaseSchema;
+
+  constructor() {
+    this.localData = this.loadLocalData();
+  }
+
+  private ensureDataDir(): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+    } catch {
+      // Ignore if read-only filesystem
+    }
+  }
+
+  private loadLocalData(): DatabaseSchema {
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        return {
+          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+          products: parsed.products && parsed.products.length > 0 ? parsed.products : DEFAULT_PRODUCTS,
+          customers: parsed.customers && parsed.customers.length > 0 ? parsed.customers : DEFAULT_CUSTOMERS,
+          orders: parsed.orders && parsed.orders.length > 0 ? parsed.orders : DEFAULT_ORDERS,
+        };
+      }
+    } catch (e) {
+      console.warn('Failed reading local database file, using defaults:', e);
+    }
+
+    const initial: DatabaseSchema = {
+      settings: DEFAULT_SETTINGS,
+      products: DEFAULT_PRODUCTS,
+      customers: DEFAULT_CUSTOMERS,
+      orders: DEFAULT_ORDERS,
+    };
+    this.saveLocalData(initial);
+    return initial;
+  }
+
+  private saveLocalData(data?: DatabaseSchema): void {
+    const toSave = data || this.localData;
+    try {
+      this.ensureDataDir();
+      fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+    } catch {
+      // Ignore write errors in read-only environment
+    }
+  }
 
   private async db() {
+    const sql = getSql();
+    if (!sql) return null;
+
     if (!this.ready) {
-      this.ready = this.setup().catch(err => {
-        this.ready = null;
-        throw err;
+      this.ready = this.setup().then(() => true).catch(err => {
+        console.warn('Neon database setup error, using local fallback:', err.message);
+        return false;
       });
     }
-    await this.ready;
-    return getSql();
+
+    const ok = await this.ready;
+    if (!ok) return null;
+    return sql;
   }
 
   // -------------------------
@@ -310,6 +383,7 @@ export class ServerDatabase {
   // -------------------------
   private async setup(): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
 
     await Promise.all([
       sql`CREATE TABLE IF NOT EXISTS store_settings (
@@ -434,6 +508,7 @@ export class ServerDatabase {
   // -------------------------
   private async saveSettings(s: StoreSettings): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`INSERT INTO store_settings
       (id, store_name, tagline, address, phone, receipt_footer, paper_width, tax_percent, enable_tax,
        currency, qris_code_text, cloudinary_cloud_name, cloudinary_upload_preset, theme, admin_pin)
@@ -460,6 +535,7 @@ export class ServerDatabase {
 
   private async insertProduct(p: Product): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`INSERT INTO products (id, name, category, price, cost_price, stock, unit, image_url, sku, description, is_active)
       VALUES (${p.id}, ${p.name}, ${p.category}, ${p.price}, ${p.costPrice || 0}, ${p.stock}, ${p.unit || 'pcs'},
        ${p.imageUrl ?? null}, ${p.sku ?? null}, ${p.description ?? null}, ${p.isActive !== false})
@@ -468,6 +544,7 @@ export class ServerDatabase {
 
   private async saveProduct(p: Product): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`UPDATE products SET
       name = ${p.name}, category = ${p.category}, price = ${p.price}, cost_price = ${p.costPrice || 0},
       stock = ${p.stock}, unit = ${p.unit || 'pcs'}, image_url = ${p.imageUrl ?? null}, sku = ${p.sku ?? null},
@@ -477,6 +554,7 @@ export class ServerDatabase {
 
   private async insertCustomer(c: Customer): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`INSERT INTO customers (id, name, phone, email, address, total_spent, orders_count, first_visit, last_visit, notes)
       VALUES (${c.id}, ${c.name}, ${c.phone || ''}, ${c.email ?? null}, ${c.address ?? null},
        ${c.totalSpent || 0}, ${c.ordersCount || 0}, ${c.firstVisit}, ${c.lastVisit}, ${c.notes ?? null})
@@ -485,6 +563,7 @@ export class ServerDatabase {
 
   private async saveCustomer(c: Customer): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`UPDATE customers SET
       name = ${c.name}, phone = ${c.phone || ''}, email = ${c.email ?? null}, address = ${c.address ?? null},
       total_spent = ${c.totalSpent || 0}, orders_count = ${c.ordersCount || 0},
@@ -494,6 +573,7 @@ export class ServerDatabase {
 
   private async insertItem(orderId: string, it: any, position: number): Promise<void> {
     const sql = getSql();
+    if (!sql) return;
     await sql`INSERT INTO order_items
       (order_id, position, product_id, product_name, price, cost_price, quantity, length, width, area, subtotal, note)
       VALUES (${orderId}, ${position}, ${it.productId ?? null}, ${it.productName}, ${it.price},
@@ -504,6 +584,7 @@ export class ServerDatabase {
   // Simpan order + itemnya. Mengembalikan false kalau order sudah ada.
   private async insertOrder(o: Order): Promise<boolean> {
     const sql = getSql();
+    if (!sql) return false;
     const r = await sql`INSERT INTO orders
       (id, invoice_number, customer_id, customer_name, customer_phone, subtotal, discount, tax, total,
        payment_method, payment_status, cash_given, cash_change, notes, created_at)
@@ -521,59 +602,125 @@ export class ServerDatabase {
   // Products
   // -------------------------
   public async getProducts(): Promise<Product[]> {
-    const sql = await this.db();
-    const r = await sql`SELECT * FROM products ORDER BY seq ASC`;
-    return r.map(toProduct);
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`SELECT * FROM products ORDER BY seq ASC`;
+        return r.map(toProduct);
+      }
+    } catch (e: any) {
+      console.warn('Neon getProducts error, using local fallback:', e.message);
+    }
+    return [...this.localData.products];
   }
 
   public async getProductById(id: string): Promise<Product | undefined> {
-    const sql = await this.db();
-    const r = await sql`SELECT * FROM products WHERE id = ${id}`;
-    return r[0] ? toProduct(r[0]) : undefined;
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`SELECT * FROM products WHERE id = ${id}`;
+        if (r[0]) return toProduct(r[0]);
+      }
+    } catch (e: any) {
+      console.warn('Neon getProductById error, using local fallback:', e.message);
+    }
+    return this.localData.products.find(p => p.id === id);
   }
 
   public async createProduct(product: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
-    await this.db();
     const newProduct: Product = {
       ...product,
       id: product.id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       isActive: product.isActive !== undefined ? product.isActive : true,
     };
-    await this.insertProduct(newProduct);
+    this.localData.products.push(newProduct);
+    this.saveLocalData();
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        await this.insertProduct(newProduct);
+      }
+    } catch (e: any) {
+      console.warn('Neon createProduct error:', e.message);
+    }
     return newProduct;
   }
 
   public async updateProduct(id: string, updates: Partial<Product>): Promise<Product | null> {
-    const current = await this.getProductById(id);
-    if (!current) return null;
-    const next = { ...current, ...updates, id };
-    await this.saveProduct(next);
-    return next;
+    const idx = this.localData.products.findIndex(p => p.id === id);
+    let updatedProduct: Product | null = null;
+    if (idx !== -1) {
+      this.localData.products[idx] = { ...this.localData.products[idx], ...updates, id };
+      updatedProduct = this.localData.products[idx];
+      this.saveLocalData();
+    }
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const current = await this.getProductById(id);
+        if (current) {
+          const next = { ...current, ...updates, id };
+          await this.saveProduct(next);
+          return next;
+        }
+      }
+    } catch (e: any) {
+      console.warn('Neon updateProduct error:', e.message);
+    }
+    return updatedProduct;
   }
 
   public async deleteProduct(id: string): Promise<boolean> {
-    const sql = await this.db();
-    const r = await sql`DELETE FROM products WHERE id = ${id} RETURNING id`;
-    return r.length > 0;
+    const prevLen = this.localData.products.length;
+    this.localData.products = this.localData.products.filter(p => p.id !== id);
+    if (this.localData.products.length !== prevLen) {
+      this.saveLocalData();
+    }
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`DELETE FROM products WHERE id = ${id} RETURNING id`;
+        return r.length > 0;
+      }
+    } catch (e: any) {
+      console.warn('Neon deleteProduct error:', e.message);
+    }
+    return this.localData.products.length !== prevLen;
   }
 
   // -------------------------
   // Customers (Automatic CRM)
   // -------------------------
   public async getCustomers(): Promise<Customer[]> {
-    const sql = await this.db();
-    const r = await sql`SELECT * FROM customers ORDER BY seq DESC`;
-    return r.map(toCustomer);
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`SELECT * FROM customers ORDER BY seq DESC`;
+        return r.map(toCustomer);
+      }
+    } catch (e: any) {
+      console.warn('Neon getCustomers error, using local fallback:', e.message);
+    }
+    return [...this.localData.customers];
   }
 
   public async getCustomerById(id: string): Promise<Customer | undefined> {
-    const sql = await this.db();
-    const r = await sql`SELECT * FROM customers WHERE id = ${id}`;
-    return r[0] ? toCustomer(r[0]) : undefined;
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`SELECT * FROM customers WHERE id = ${id}`;
+        if (r[0]) return toCustomer(r[0]);
+      }
+    } catch (e: any) {
+      console.warn('Neon getCustomerById error, using local fallback:', e.message);
+    }
+    return this.localData.customers.find(c => c.id === id);
   }
 
   public async createCustomer(cust: Omit<Customer, 'id'> & { id?: string }): Promise<Customer> {
-    await this.db();
     const newCust: Customer = {
       ...cust,
       id: cust.id || `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -582,93 +729,158 @@ export class ServerDatabase {
       totalSpent: cust.totalSpent || 0,
       ordersCount: cust.ordersCount || 0,
     };
-    await this.insertCustomer(newCust);
+    this.localData.customers.unshift(newCust);
+    this.saveLocalData();
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        await this.insertCustomer(newCust);
+      }
+    } catch (e: any) {
+      console.warn('Neon createCustomer error:', e.message);
+    }
     return newCust;
   }
 
   public async updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer | null> {
-    const current = await this.getCustomerById(id);
-    if (!current) return null;
-    const next = { ...current, ...updates, id };
-    await this.saveCustomer(next);
-    return next;
+    const idx = this.localData.customers.findIndex(c => c.id === id);
+    let updatedCust: Customer | null = null;
+    if (idx !== -1) {
+      this.localData.customers[idx] = { ...this.localData.customers[idx], ...updates, id };
+      updatedCust = this.localData.customers[idx];
+      this.saveLocalData();
+    }
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const current = await this.getCustomerById(id);
+        if (current) {
+          const next = { ...current, ...updates, id };
+          await this.saveCustomer(next);
+          return next;
+        }
+      }
+    } catch (e: any) {
+      console.warn('Neon updateCustomer error:', e.message);
+    }
+    return updatedCust;
   }
 
   public async recordCustomerFromOrder(name: string, phone: string, total: number): Promise<Customer> {
-    const sql = await this.db();
     const cleanPhone = phone.replace(/[^0-9+]/g, '').trim();
     const cleanName = name.trim() || 'Pelanggan Umum';
     const nowIso = new Date().toISOString();
 
-    let found: any;
-    if (cleanPhone) {
-      const r = await sql`SELECT * FROM customers
-        WHERE regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = ${cleanPhone}
-        ORDER BY seq ASC LIMIT 1`;
-      found = r[0];
-    }
-    if (!found && cleanName !== 'Pelanggan Umum') {
-      const r = await sql`SELECT * FROM customers WHERE LOWER(name) = LOWER(${cleanName}) ORDER BY seq ASC LIMIT 1`;
-      found = r[0];
-    }
+    let existingLocal = this.localData.customers.find(c => {
+      const cp = (c.phone || '').replace(/[^0-9+]/g, '').trim();
+      if (cleanPhone && cp && cp === cleanPhone) return true;
+      if (cleanName !== 'Pelanggan Umum' && c.name.toLowerCase() === cleanName.toLowerCase()) return true;
+      return false;
+    });
 
-    if (found) {
-      const existing = toCustomer(found);
-      existing.totalSpent += total;
-      existing.ordersCount += 1;
-      existing.lastVisit = nowIso;
-      if (cleanName !== 'Pelanggan Umum' && (!existing.name || existing.name === 'Pelanggan Umum')) {
-        existing.name = cleanName;
+    if (existingLocal) {
+      existingLocal.totalSpent += total;
+      existingLocal.ordersCount += 1;
+      existingLocal.lastVisit = nowIso;
+      if (cleanName !== 'Pelanggan Umum' && (!existingLocal.name || existingLocal.name === 'Pelanggan Umum')) {
+        existingLocal.name = cleanName;
       }
-      if (cleanPhone && !existing.phone) existing.phone = cleanPhone;
-      await this.saveCustomer(existing);
-      return existing;
+      if (cleanPhone && !existingLocal.phone) existingLocal.phone = cleanPhone;
+      this.saveLocalData();
+    } else {
+      existingLocal = {
+        id: `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: cleanName,
+        phone: cleanPhone || '',
+        totalSpent: total,
+        ordersCount: 1,
+        firstVisit: nowIso,
+        lastVisit: nowIso,
+        notes: 'Pencatatan otomatis dari pesanan kasir',
+      };
+      this.localData.customers.unshift(existingLocal);
+      this.saveLocalData();
     }
 
-    const newCust: Customer = {
-      id: `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      name: cleanName,
-      phone: cleanPhone || '',
-      totalSpent: total,
-      ordersCount: 1,
-      firstVisit: nowIso,
-      lastVisit: nowIso,
-      notes: 'Pencatatan otomatis dari pesanan kasir',
-    } as Customer;
-    await this.insertCustomer(newCust);
-    return newCust;
+    try {
+      const sql = await this.db();
+      if (sql) {
+        let found: any;
+        if (cleanPhone) {
+          const r = await sql`SELECT * FROM customers
+            WHERE regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = ${cleanPhone}
+            ORDER BY seq ASC LIMIT 1`;
+          found = r[0];
+        }
+        if (!found && cleanName !== 'Pelanggan Umum') {
+          const r = await sql`SELECT * FROM customers WHERE LOWER(name) = LOWER(${cleanName}) ORDER BY seq ASC LIMIT 1`;
+          found = r[0];
+        }
+
+        if (found) {
+          const existing = toCustomer(found);
+          existing.totalSpent += total;
+          existing.ordersCount += 1;
+          existing.lastVisit = nowIso;
+          if (cleanName !== 'Pelanggan Umum' && (!existing.name || existing.name === 'Pelanggan Umum')) {
+            existing.name = cleanName;
+          }
+          if (cleanPhone && !existing.phone) existing.phone = cleanPhone;
+          await this.saveCustomer(existing);
+          return existing;
+        } else {
+          await this.insertCustomer(existingLocal);
+        }
+      }
+    } catch (e: any) {
+      console.warn('Neon recordCustomerFromOrder error:', e.message);
+    }
+
+    return existingLocal;
   }
 
   // -------------------------
   // Orders
   // -------------------------
   public async getOrders(): Promise<Order[]> {
-    const sql = await this.db();
-    const [orders, items] = await Promise.all([
-      sql`SELECT * FROM orders ORDER BY seq DESC`,
-      sql`SELECT * FROM order_items ORDER BY position ASC, id ASC`,
-    ]);
-    const byOrder = new Map<string, any[]>();
-    for (const it of items) {
-      const list = byOrder.get(it.order_id) || [];
-      list.push(it);
-      byOrder.set(it.order_id, list);
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const orders = await sql`SELECT * FROM orders ORDER BY seq DESC`;
+        const items = await sql`SELECT * FROM order_items ORDER BY position ASC, id ASC`;
+        const byOrder = new Map<string, any[]>();
+        for (const it of items) {
+          const list = byOrder.get(it.order_id) || [];
+          list.push(it);
+          byOrder.set(it.order_id, list);
+        }
+        return orders.map((o: any) => toOrder(o, byOrder.get(o.id) || []));
+      }
+    } catch (e: any) {
+      console.warn('Neon getOrders error, using local fallback:', e.message);
     }
-    return orders.map(o => toOrder(o, byOrder.get(o.id) || []));
+    return [...this.localData.orders];
   }
 
   public async getOrderById(id: string): Promise<Order | undefined> {
-    const sql = await this.db();
-    const [o, items] = await Promise.all([
-      sql`SELECT * FROM orders WHERE id = ${id}`,
-      sql`SELECT * FROM order_items WHERE order_id = ${id} ORDER BY position ASC, id ASC`,
-    ]);
-    return o[0] ? toOrder(o[0], items) : undefined;
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const o = await sql`SELECT * FROM orders WHERE id = ${id}`;
+        if (o[0]) {
+          const items = await sql`SELECT * FROM order_items WHERE order_id = ${id} ORDER BY position ASC, id ASC`;
+          return toOrder(o[0], items);
+        }
+      }
+    } catch (e: any) {
+      console.warn('Neon getOrderById error, using local fallback:', e.message);
+    }
+    return this.localData.orders.find(o => o.id === id);
   }
 
   public async createOrder(orderInput: Order): Promise<{ order: Order; customer: Customer }> {
-    const sql = await this.db();
-
     // 1. Catat customer otomatis
     const customer = await this.recordCustomerFromOrder(
       orderInput.customerName,
@@ -676,20 +888,37 @@ export class ServerDatabase {
       orderInput.total
     );
 
-    // 2. Potong stok
-    await Promise.all(
-      orderInput.items.map(item =>
-        sql`UPDATE products SET stock = GREATEST(0, stock - ${item.quantity}) WHERE id = ${item.productId}`
-      )
-    );
+    // 2. Potong stok lokal
+    for (const item of orderInput.items) {
+      const prod = this.localData.products.find(p => p.id === item.productId);
+      if (prod) {
+        prod.stock = Math.max(0, prod.stock - item.quantity);
+      }
+    }
 
-    // 3. Simpan order + item
+    // 3. Simpan order lokal
     const finalizedOrder: Order = {
       ...orderInput,
       customerId: customer.id,
       createdAt: orderInput.createdAt || new Date().toISOString(),
     };
-    await this.insertOrder(finalizedOrder);
+    this.localData.orders.unshift(finalizedOrder);
+    this.saveLocalData();
+
+    // 4. Update Neon jika aktif
+    try {
+      const sql = await this.db();
+      if (sql) {
+        await Promise.all(
+          orderInput.items.map(item =>
+            sql`UPDATE products SET stock = GREATEST(0, stock - ${item.quantity}) WHERE id = ${item.productId}`
+          )
+        );
+        await this.insertOrder(finalizedOrder);
+      }
+    } catch (e: any) {
+      console.warn('Neon createOrder error:', e.message);
+    }
 
     return { order: finalizedOrder, customer };
   }
@@ -700,8 +929,7 @@ export class ServerDatabase {
       Pick<Order, 'customerName' | 'customerPhone' | 'paymentMethod' | 'items' | 'discount' | 'tax' | 'notes'>
     >
   ): Promise<Order | null> {
-    const sql = await this.db();
-    const current = await this.getOrderById(id);
+    const current = this.localData.orders.find(o => o.id === id);
     if (!current) return null;
 
     const next: Order = { ...current };
@@ -716,23 +944,16 @@ export class ServerDatabase {
     if (updates.items !== undefined) {
       if (updates.items.length === 0) throw new Error('Invoice minimal harus punya 1 item.');
 
-      // Selisih stok per produk; hanya yang berubah yang diproses
-      const delta = new Map<string, number>();
+      // Kembalikan stok lama & kurangi stok baru
       for (const it of current.items) {
-        delta.set(it.productId, (delta.get(it.productId) || 0) + it.quantity);
+        const prod = this.localData.products.find(p => p.id === it.productId);
+        if (prod) prod.stock += it.quantity;
       }
       for (const it of updates.items) {
-        delta.set(it.productId, (delta.get(it.productId) || 0) - it.quantity);
+        const prod = this.localData.products.find(p => p.id === it.productId);
+        if (prod) prod.stock = Math.max(0, prod.stock - it.quantity);
       }
-      await Promise.all(
-        [...delta.entries()]
-          .filter(([, d]) => d !== 0)
-          .map(([productId, d]) =>
-            sql`UPDATE products SET stock = GREATEST(0, stock + ${d}) WHERE id = ${productId}`
-          )
-      );
 
-      // Subtotal dihitung ulang di server
       next.items = updates.items.map(it => ({
         ...it,
         subtotal:
@@ -740,9 +961,6 @@ export class ServerDatabase {
           (Number(it.quantity) || 0) *
           (it.area ? Number(it.area) : 1),
       }));
-
-      await sql`DELETE FROM order_items WHERE order_id = ${id}`;
-      await Promise.all(next.items.map((it, i) => this.insertItem(id, it, i)));
     }
 
     next.subtotal = next.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0);
@@ -754,44 +972,110 @@ export class ServerDatabase {
       next.cashChange = Math.max(0, next.cashGiven - next.total);
     }
 
-    // Selisih total masuk ke total belanja customer
     const diff = next.total - current.total;
     if (diff !== 0 && current.customerId) {
-      await sql`UPDATE customers SET total_spent = GREATEST(0, total_spent + ${diff}) WHERE id = ${current.customerId}`;
+      const cust = this.localData.customers.find(c => c.id === current.customerId);
+      if (cust) {
+        cust.totalSpent = Math.max(0, cust.totalSpent + diff);
+      }
     }
 
-    await sql`UPDATE orders SET
-      customer_name = ${next.customerName}, customer_phone = ${next.customerPhone ?? null},
-      subtotal = ${next.subtotal}, discount = ${next.discount || 0}, tax = ${next.tax || 0},
-      total = ${next.total}, payment_method = ${next.paymentMethod},
-      cash_change = ${next.cashChange ?? null}, notes = ${next.notes ?? null}
-      WHERE id = ${id}`;
+    const oIdx = this.localData.orders.findIndex(o => o.id === id);
+    if (oIdx !== -1) {
+      this.localData.orders[oIdx] = next;
+    }
+    this.saveLocalData();
 
-   return next;
+    try {
+      const sql = await this.db();
+      if (sql) {
+        if (updates.items !== undefined) {
+          const delta = new Map<string, number>();
+          for (const it of current.items) {
+            delta.set(it.productId, (delta.get(it.productId) || 0) + it.quantity);
+          }
+          for (const it of updates.items) {
+            delta.set(it.productId, (delta.get(it.productId) || 0) - it.quantity);
+          }
+          await Promise.all(
+            [...delta.entries()]
+              .filter(([, d]) => d !== 0)
+              .map(([productId, d]) =>
+                sql`UPDATE products SET stock = GREATEST(0, stock + ${d}) WHERE id = ${productId}`
+              )
+          );
+          await sql`DELETE FROM order_items WHERE order_id = ${id}`;
+          await Promise.all(next.items.map((it, i) => this.insertItem(id, it, i)));
+        }
+
+        if (diff !== 0 && current.customerId) {
+          await sql`UPDATE customers SET total_spent = GREATEST(0, total_spent + ${diff}) WHERE id = ${current.customerId}`;
+        }
+
+        await sql`UPDATE orders SET
+          customer_name = ${next.customerName}, customer_phone = ${next.customerPhone ?? null},
+          subtotal = ${next.subtotal}, discount = ${next.discount || 0}, tax = ${next.tax || 0},
+          total = ${next.total}, payment_method = ${next.paymentMethod},
+          cash_change = ${next.cashChange ?? null}, notes = ${next.notes ?? null}
+          WHERE id = ${id}`;
+      }
+    } catch (e: any) {
+      console.warn('Neon updateOrder error:', e.message);
+    }
+
+    return next;
   }
 
   public async deleteOrder(id: string): Promise<boolean> {
-    const sql = await this.db();
-    // order_items ikut terhapus otomatis (ON DELETE CASCADE)
-    const r = await sql`DELETE FROM orders WHERE id = ${id} RETURNING id`;
-    return r.length > 0;
+    const prevLen = this.localData.orders.length;
+    this.localData.orders = this.localData.orders.filter(o => o.id !== id);
+    if (this.localData.orders.length !== prevLen) {
+      this.saveLocalData();
+    }
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`DELETE FROM orders WHERE id = ${id} RETURNING id`;
+        return r.length > 0;
+      }
+    } catch (e: any) {
+      console.warn('Neon deleteOrder error:', e.message);
+    }
+    return this.localData.orders.length !== prevLen;
   }
 
   // -------------------------
   // Settings
   // -------------------------
   public async getSettings(): Promise<StoreSettings> {
-    const sql = await this.db();
-    const r = await sql`SELECT * FROM store_settings WHERE id = 1`;
-    return r[0] ? toSettings(r[0]) : { ...DEFAULT_SETTINGS, neonDatabaseUrl: '' };
+    try {
+      const sql = await this.db();
+      if (sql) {
+        const r = await sql`SELECT * FROM store_settings WHERE id = 1`;
+        if (r[0]) return toSettings(r[0]);
+      }
+    } catch (e: any) {
+      console.warn('Neon getSettings error, using local fallback:', e.message);
+    }
+    return { ...this.localData.settings, neonDatabaseUrl: '' };
   }
 
   public async updateSettings(settings: Partial<StoreSettings>): Promise<StoreSettings> {
-    await this.db();
-    const { neonDatabaseUrl, ...safe } = settings; // URL database tidak disimpan
-    const current = await this.getSettings();
+    const { neonDatabaseUrl, ...safe } = settings;
+    const current = { ...this.localData.settings };
     const next: StoreSettings = { ...current, ...safe, neonDatabaseUrl: '' };
-    await this.saveSettings(next);
+    this.localData.settings = next;
+    this.saveLocalData();
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        await this.saveSettings(next);
+      }
+    } catch (e: any) {
+      console.warn('Neon updateSettings error:', e.message);
+    }
     return next;
   }
   // -------------------------

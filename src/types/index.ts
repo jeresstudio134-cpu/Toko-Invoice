@@ -29,9 +29,11 @@ export interface CartItem {
   product: Product;
   quantity: number;
   note?: string;
+  customPrice?: number;
   length?: number; // Panjang (P)
   width?: number;  // Lebar (L)
   area?: number;   // Luas = P x L
+  dimensionUnit?: 'm' | 'cm';
 }
 
 export type PaymentMethod = 'tunai' | 'qris' | 'transfer' | 'debit';
@@ -48,6 +50,7 @@ export interface OrderItem {
   length?: number;
   width?: number;
   area?: number;
+  dimensionUnit?: 'm' | 'cm';
 }
 
 export interface Order {
