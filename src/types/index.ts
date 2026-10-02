@@ -85,6 +85,7 @@ export interface StoreSettings {
   enableTax: boolean;
   currency: string;
   qrisCodeText?: string;
+  qrisImageUrl?: string;
   cloudinaryCloudName?: string;
   cloudinaryUploadPreset?: string;
   theme?: 'light' | 'dark';

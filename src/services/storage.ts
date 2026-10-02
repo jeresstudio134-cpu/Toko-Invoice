@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   enableTax: false,
   currency: 'IDR',
   qrisCodeText: '00020101021226590014ID.LINKAJA.WWW011893600911002234010202150000000000000005204581253033605802ID5914KOMA MINIMAL6007JAKARTA61051219062070703A01630454D1',
+  qrisImageUrl: '',
   cloudinaryCloudName: 'kios-minimalis',
   cloudinaryUploadPreset: 'ml_default',
   theme: 'light',

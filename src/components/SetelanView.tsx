@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   RefreshCw,
   LogOut,
+  QrCode,
+  Loader2,
 } from 'lucide-react';
 
 interface SetelanViewProps {
@@ -74,6 +76,9 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
   const [cloudName, setCloudName] = useState(settings.cloudinaryCloudName || '');
   const [uploadPreset, setUploadPreset] = useState(settings.cloudinaryUploadPreset || '');
   const [neonDbUrl, setNeonDbUrl] = useState(settings.neonDatabaseUrl || '');
+  const [qrisImageUrl, setQrisImageUrl] = useState(settings.qrisImageUrl || '');
+  const [isUploadingQris, setIsUploadingQris] = useState(false);
+  const [qrisUploadError, setQrisUploadError] = useState('');
 
   // Change Admin PIN state
   const [currentPinAttempt, setCurrentPinAttempt] = useState('');
@@ -137,6 +142,22 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
     setPinError(false);
   };
 
+  const handleUploadQris = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsUploadingQris(true);
+    setQrisUploadError('');
+    try {
+      const url = await uploadImage(file);
+      setQrisImageUrl(url);
+    } catch (err: any) {
+      setQrisUploadError(err.message || 'Gagal mengunggah barcode QRIS.');
+    } finally {
+      setIsUploadingQris(false);
+    }
+  };
+
   const handleSaveStoreSettings = (e: React.FormEvent) => {
     e.preventDefault();
     const updated: StoreSettings = {
@@ -149,6 +170,7 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
       paperWidth,
       enableTax,
       taxPercent,
+      qrisImageUrl,
       cloudinaryCloudName: cloudName,
       cloudinaryUploadPreset: uploadPreset,
       neonDatabaseUrl: neonDbUrl,
@@ -655,6 +677,93 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
                     isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200'
                   }`}
                 />
+              </div>
+
+              {/* Barcode QRIS Toko */}
+              <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+                    Barcode / Foto QRIS Toko
+                  </label>
+                  {qrisImageUrl && (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Aktif
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-500 leading-relaxed">
+                  Unggah gambar barcode QRIS resmi toko Anda (dari BCA, GoPay Usaha, OVO, Dana Bisnis, dll). Barcode ini akan muncul di layar kasir saat kasir memilih pembayaran QRIS.
+                </p>
+
+                {qrisImageUrl ? (
+                  <div className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60">
+                    <div className="w-20 h-20 bg-white rounded-lg p-1.5 border border-neutral-200 shadow-xs flex-shrink-0 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={qrisImageUrl}
+                        alt="QRIS Toko"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>QRIS Toko Terpasang</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 mt-0.5 truncate">
+                        Bisa langsung di-scan pelanggan di kasir
+                      </p>
+                      <div className="flex gap-2 mt-2">
+                        <label className="cursor-pointer px-2.5 py-1 text-[11px] font-bold rounded-lg bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 transition-colors">
+                          Ganti Foto
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleUploadQris}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setQrisImageUrl('')}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-600 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-neutral-50/50 dark:bg-neutral-800/40">
+                    {isUploadingQris ? (
+                      <div className="flex flex-col items-center gap-1.5 py-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-neutral-500" />
+                        <span className="text-xs text-neutral-500 font-medium">Mengunggah Barcode QRIS...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <QrCode className="w-8 h-8 text-neutral-400 mb-1.5" />
+                        <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                          + Upload Barcode QRIS Toko
+                        </span>
+                        <span className="text-[10px] text-neutral-400 mt-0.5">
+                          Pilih foto dari galeri atau kamera HP/laptop
+                        </span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadQris}
+                      disabled={isUploadingQris}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+
+                {qrisUploadError && (
+                  <p className="text-[11px] text-red-500 mt-1">{qrisUploadError}</p>
+                )}
               </div>
             </div>
           </div>

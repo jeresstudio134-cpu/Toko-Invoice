@@ -679,22 +679,55 @@ export const KasirView: React.FC<KasirViewProps> = ({
           </div>
         )}
 
-        {/* QRIS notice */}
+        {/* QRIS notice & Real Store QRIS Display */}
         {paymentMethod === 'qris' && (
           <div
-            className={`p-3 rounded-xl border text-center ${
+            className={`p-4 rounded-xl border text-center space-y-2.5 transition-colors ${
               isDark ? 'bg-neutral-800/60 border-neutral-700' : 'bg-neutral-50 border-neutral-200'
             }`}
           >
-            <div className="w-24 h-24 bg-white p-2 rounded-lg mx-auto mb-2 flex items-center justify-center border border-neutral-200 shadow-xs">
-              <QrCode className="w-20 h-20 text-neutral-900" />
-            </div>
-            <p className={`text-[11px] font-bold ${isDark ? 'text-neutral-200' : 'text-neutral-900'}`}>
-              Scan QRIS Toko
-            </p>
-            <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
-              Mendukung GoPay, OVO, Dana, ShopeePay, BCA, Mandiri
-            </p>
+            {settings.qrisImageUrl ? (
+              <div className="space-y-2">
+                <div className="inline-block p-3 bg-white rounded-2xl border-2 border-neutral-200 dark:border-neutral-700 shadow-md">
+                  <img
+                    src={settings.qrisImageUrl}
+                    alt={`QRIS ${settings.storeName}`}
+                    className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg mx-auto"
+                  />
+                  <div className="mt-2 text-center border-t border-neutral-100 pt-1.5">
+                    <span className="text-[11px] font-bold text-neutral-800 uppercase tracking-wider block">
+                      {settings.storeName}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      QRIS Toko Resmi
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center space-y-0.5">
+                  <p className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+                    Scan Barcode untuk Membayar {formatRupiah(grandTotal)}
+                  </p>
+                  <p className="text-[10px] text-neutral-500">
+                    Mendukung GoPay, OVO, Dana, ShopeePay, BCA Mobile, Livin, dll.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 space-y-2">
+                <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl mx-auto flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <QrCode className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <p className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
+                    Barcode QRIS Toko Belum Terpasang
+                  </p>
+                  <p className="text-[11px] text-neutral-500 max-w-xs mx-auto leading-relaxed">
+                    Unggah foto barcode QRIS resmi toko Anda di menu <strong>Setelan &gt; Profil Toko</strong> agar pelanggan bisa langsung scan saat checkout.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

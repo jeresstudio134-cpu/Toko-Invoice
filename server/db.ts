@@ -101,6 +101,7 @@ const toSettings = (r: any): StoreSettings =>
     enableTax: !!r.enable_tax,
     currency: r.currency || 'IDR',
     qrisCodeText: r.qris_code_text || '',
+    qrisImageUrl: r.qris_image_url || '',
     cloudinaryCloudName: r.cloudinary_cloud_name || '',
     cloudinaryUploadPreset: r.cloudinary_upload_preset || '',
     theme: r.theme || 'light',
@@ -119,6 +120,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   enableTax: false,
   currency: 'IDR',
   qrisCodeText: '00020101021226590014ID.LINKAJA.WWW011893600911002234010202150000000000000005204581253033605802ID5914KOMA MINIMAL6007JAKARTA61051219062070703A01630454D1',
+  qrisImageUrl: '',
   cloudinaryCloudName: 'kios-minimalis',
   cloudinaryUploadPreset: 'ml_default',
   theme: 'light',
@@ -403,6 +405,7 @@ export class ServerDatabase {
         enable_tax BOOLEAN DEFAULT FALSE,
         currency VARCHAR(10) DEFAULT 'IDR',
         qris_code_text TEXT,
+        qris_image_url TEXT,
         cloudinary_cloud_name VARCHAR(255),
         cloudinary_upload_preset VARCHAR(255),
         theme VARCHAR(10) DEFAULT 'light',
@@ -471,6 +474,7 @@ export class ServerDatabase {
 
     // Kolom urutan (tabel hasil Sinkronkan lama tidak punya)
     await Promise.all([
+      sql`ALTER TABLE store_settings ADD COLUMN IF NOT EXISTS qris_image_url TEXT`,
       sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS seq BIGSERIAL`,
       sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb`,
       sql`ALTER TABLE customers ADD COLUMN IF NOT EXISTS seq BIGSERIAL`,
@@ -517,10 +521,10 @@ export class ServerDatabase {
     if (!sql) return;
     await sql`INSERT INTO store_settings
       (id, store_name, tagline, address, phone, receipt_footer, paper_width, tax_percent, enable_tax,
-       currency, qris_code_text, cloudinary_cloud_name, cloudinary_upload_preset, theme, admin_pin)
+       currency, qris_code_text, qris_image_url, cloudinary_cloud_name, cloudinary_upload_preset, theme, admin_pin)
       VALUES (1, ${s.storeName}, ${s.tagline || ''}, ${s.address || ''}, ${s.phone || ''}, ${s.receiptFooter || ''},
        ${s.paperWidth || '58mm'}, ${s.taxPercent || 0}, ${!!s.enableTax}, ${s.currency || 'IDR'},
-       ${s.qrisCodeText || ''}, ${s.cloudinaryCloudName || ''}, ${s.cloudinaryUploadPreset || ''},
+       ${s.qrisCodeText || ''}, ${s.qrisImageUrl || ''}, ${s.cloudinaryCloudName || ''}, ${s.cloudinaryUploadPreset || ''},
        ${s.theme || 'light'}, ${s.adminPin || '1234'})
       ON CONFLICT (id) DO UPDATE SET
         store_name = EXCLUDED.store_name,
@@ -533,6 +537,7 @@ export class ServerDatabase {
         enable_tax = EXCLUDED.enable_tax,
         currency = EXCLUDED.currency,
         qris_code_text = EXCLUDED.qris_code_text,
+        qris_image_url = EXCLUDED.qris_image_url,
         cloudinary_cloud_name = EXCLUDED.cloudinary_cloud_name,
         cloudinary_upload_preset = EXCLUDED.cloudinary_upload_preset,
         theme = EXCLUDED.theme,
@@ -1202,6 +1207,68 @@ export class ServerDatabase {
         message: err.message || 'Gagal sinkronisasi data ke Neon PostgreSQL.',
       };
     }
+  }
+
+  public async importBackup(backupData: {
+    store?: Partial<StoreSettings>;
+    products?: Product[];
+    customers?: Customer[];
+    orders?: Order[];
+  }): Promise<{ success: boolean; message: string; counts: { products: number; customers: number; orders: number } }> {
+    if (backupData.store) {
+      await this.updateSettings(backupData.store);
+    }
+
+    if (Array.isArray(backupData.products)) {
+      this.localData.products = backupData.products;
+    }
+    if (Array.isArray(backupData.customers)) {
+      this.localData.customers = backupData.customers;
+    }
+    if (Array.isArray(backupData.orders)) {
+      this.localData.orders = backupData.orders;
+    }
+    this.saveLocalData();
+
+    try {
+      const sql = await this.db();
+      if (sql) {
+        if (Array.isArray(backupData.products) && backupData.products.length > 0) {
+          for (const p of backupData.products) {
+            await sql`INSERT INTO products (id, name, category, price, cost_price, stock, unit, image_url, images, sku, description, is_active)
+              VALUES (${p.id}, ${p.name}, ${p.category}, ${p.price}, ${p.costPrice || 0}, ${p.stock}, ${p.unit || 'pcs'},
+               ${p.imageUrl ?? null}, ${JSON.stringify(imagesOf(p))}::jsonb, ${p.sku ?? null}, ${p.description ?? null}, ${p.isActive !== false})
+              ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name, category = EXCLUDED.category, price = EXCLUDED.price,
+                cost_price = EXCLUDED.cost_price, stock = EXCLUDED.stock, unit = EXCLUDED.unit,
+                image_url = EXCLUDED.image_url, images = EXCLUDED.images, sku = EXCLUDED.sku,
+                description = EXCLUDED.description, is_active = EXCLUDED.is_active`;
+          }
+        }
+        if (Array.isArray(backupData.customers) && backupData.customers.length > 0) {
+          for (const c of backupData.customers) {
+            await this.saveCustomer(c);
+          }
+        }
+        if (Array.isArray(backupData.orders) && backupData.orders.length > 0) {
+          for (const o of backupData.orders) {
+            await this.insertOrder(o);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('Neon importBackup error:', e.message);
+    }
+
+    return {
+      success: true,
+      message: 'Database berhasil dipulihkan dari file cadangan!',
+      counts: {
+        products: this.localData.products.length,
+        customers: this.localData.customers.length,
+        orders: this.localData.orders.length,
+      },
+    };
   }
 }
 
