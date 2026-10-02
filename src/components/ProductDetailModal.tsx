@@ -213,8 +213,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     : 'bg-neutral-900 text-white hover:bg-neutral-800'
                 }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>+ Pilih</span>
+                
+                <span>Pilih</span>
               </button>
             )}
           </div>
