@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
-import { X, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { Product } from '../types';
 import { formatRupiah } from '../utils/format';
-import { getProductImages } from '../utils/cloudinary';
-import { ImageCarousel } from './ImageCarousel';
+import { getProductImages, optimizedUrl } from '../utils/cloudinary';
 
 interface ProductDetailModalProps {
   product: Product;
@@ -21,83 +20,204 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const isDark = theme === 'dark';
   const images = getProductImages(product);
   const outOfStock = product.stock <= 0;
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // Tutup dengan tombol Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && images.length > 1) {
+        setSelectedIndex(prev => (prev > 0 ? prev - 1 : images.length - 1));
+      }
+      if (e.key === 'ArrowRight' && images.length > 1) {
+        setSelectedIndex(prev => (prev < images.length - 1 ? prev + 1 : 0));
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, images.length]);
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-4"
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-6 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
         onClick={e => e.stopPropagation()}
-        className={`relative w-full max-w-md max-h-[92vh] overflow-y-auto no-scrollbar rounded-t-3xl sm:rounded-2xl border ${
-          isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-2xl'
+        className={`relative w-full max-w-4xl max-h-[92vh] overflow-hidden rounded-2xl border shadow-2xl flex flex-col md:flex-row ${
+          isDark
+            ? 'bg-neutral-900 border-neutral-800 text-white'
+            : 'bg-white border-neutral-200 text-neutral-900'
         }`}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Tutup"
-          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center"
+        {/* Kolom Kiri: Tampilan Foto Utama Besar */}
+        <div
+          className={`relative flex-1 min-h-[280px] sm:min-h-[380px] md:min-h-[480px] flex items-center justify-center p-4 sm:p-6 select-none ${
+            isDark ? 'bg-neutral-950/70' : 'bg-neutral-100/70'
+          }`}
         >
-          <X className="w-4 h-4" />
-        </button>
-
-        <ImageCarousel
-          images={images}
-          alt={product.name}
-          isDark={isDark}
-          className="aspect-square w-full"
-        />
-
-        <div className="p-5 space-y-3">
-          <div className="text-[11px] text-neutral-500 font-mono">
-            {product.category} · {product.unit}
-          </div>
-          <h3 className={`text-base font-bold leading-snug ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-            {product.name}
-          </h3>
-          <div className="flex items-end justify-between">
-            <span className="text-lg font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
-              {formatRupiah(product.price)}
-            </span>
-            <span
-              className={`text-[11px] font-mono font-bold ${
-                outOfStock ? 'text-red-500' : 'text-neutral-500'
-              }`}
-            >
-              {outOfStock ? 'Stok habis' : `Stok: ${product.stock}`}
-            </span>
-          </div>
-          {product.description && (
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              {product.description}
-            </p>
+          {images.length > 0 ? (
+            <img
+              src={optimizedUrl(images[selectedIndex], 1200)}
+              alt={`${product.name} - Foto ${selectedIndex + 1}`}
+              className="max-h-[55vh] md:max-h-[68vh] w-auto max-w-full object-contain rounded-xl shadow-xs transition-opacity duration-200"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center text-neutral-400 p-8 text-center">
+              <Tag className="w-16 h-16 stroke-[1.5] mb-2 opacity-30" />
+              <span className="text-xs font-mono uppercase tracking-wider">Belum ada foto</span>
+            </div>
           )}
 
-          {onAdd && (
+          {/* Tombol Navigasi Kiri (<) */}
+          {images.length > 1 && (
             <button
               type="button"
-              disabled={outOfStock}
-              onClick={() => {
-                onAdd(product);
-                onClose();
-              }}
-              className={`w-full py-3 font-bold rounded-xl text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-40 ${
-                isDark ? 'bg-white text-neutral-950' : 'bg-neutral-900 text-white'
-              }`}
+              onClick={() =>
+                setSelectedIndex(prev => (prev > 0 ? prev - 1 : images.length - 1))
+              }
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition-all shadow-lg active:scale-95"
+              aria-label="Foto sebelumnya"
             >
-              <Plus className="w-4 h-4" />
-              <span>Pilih</span>
+              <ChevronLeft className="w-5 h-5" />
             </button>
           )}
+
+          {/* Tombol Navigasi Kanan (>) */}
+          {images.length > 1 && (
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedIndex(prev => (prev < images.length - 1 ? prev + 1 : 0))
+              }
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center transition-all shadow-lg active:scale-95"
+              aria-label="Foto berikutnya"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Nomor Index Foto */}
+          {images.length > 1 && (
+            <span className="absolute bottom-3 left-3 text-[11px] font-mono font-bold px-2 py-1 rounded-md bg-black/60 text-white">
+              {selectedIndex + 1} / {images.length}
+            </span>
+          )}
+        </div>
+
+        {/* Kolom Kanan: Judul, Thumbnail Pilihan Foto, Harga, Detail, Tombol Aksi */}
+        <div className="w-full md:w-80 lg:w-96 p-4 sm:p-5 flex flex-col justify-between overflow-y-auto max-h-[46vh] md:max-h-[85vh] border-t md:border-t-0 md:border-l border-neutral-200 dark:border-neutral-800">
+          <div className="space-y-4">
+            {/* Header info */}
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 font-mono">
+                <span>{product.category}</span>
+                <span>·</span>
+                <span>{product.unit || 'pcs'}</span>
+                {product.sku && (
+                  <>
+                    <span>·</span>
+                    <span>SKU: {product.sku}</span>
+                  </>
+                )}
+              </div>
+              <h2 className="text-base sm:text-lg font-bold leading-snug mt-1">
+                {product.name}
+              </h2>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
+                  {formatRupiah(product.price)}
+                </span>
+                <span
+                  className={`text-[11px] font-mono font-bold ${
+                    outOfStock ? 'text-red-500' : 'text-neutral-500'
+                  }`}
+                >
+                  {outOfStock ? 'Stok habis' : `Stok: ${product.stock}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Thumbnail Pilihan Foto (Format Kotak seperti contoh) */}
+            {images.length > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold text-neutral-500 mb-1.5">
+                  Foto Produk ({images.length})
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-4 gap-2">
+                  {images.map((src, i) => (
+                    <button
+                      key={`${src}-${i}`}
+                      type="button"
+                      onClick={() => setSelectedIndex(i)}
+                      onMouseEnter={() => setSelectedIndex(i)}
+                      className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                        selectedIndex === i
+                          ? 'border-emerald-600 dark:border-emerald-400 ring-2 ring-emerald-500/30 scale-102 shadow-xs'
+                          : 'border-neutral-200 dark:border-neutral-700 opacity-70 hover:opacity-100 hover:border-neutral-400'
+                      }`}
+                    >
+                      <img
+                        src={optimizedUrl(src, 180)}
+                        alt={`Thumbnail ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      {i === 0 && (
+                        <span className="absolute bottom-0.5 left-0.5 right-0.5 text-[7px] font-bold text-center bg-black/60 text-white rounded-[2px] leading-tight py-0.5">
+                          Sampul
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Deskripsi */}
+            {product.description && (
+              <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                <div className="text-[11px] font-semibold text-neutral-500 mb-1">
+                  Deskripsi Menu
+                </div>
+                <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed whitespace-pre-line">
+                  {product.description}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Tombol Aksi di Bawah */}
+          <div className="pt-4 mt-3 border-t border-neutral-200 dark:border-neutral-800 flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`flex-1 py-2.5 rounded-xl font-bold text-xs border transition-colors ${
+                isDark
+                  ? 'border-neutral-700 text-neutral-300 hover:bg-neutral-800'
+                  : 'border-neutral-300 text-neutral-700 hover:bg-neutral-100'
+              }`}
+            >
+              Tutup
+            </button>
+            {onAdd && (
+              <button
+                type="button"
+                disabled={outOfStock}
+                onClick={() => {
+                  onAdd(product);
+                  onClose();
+                }}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-40 transition-transform active:scale-98 shadow-sm ${
+                  isDark
+                    ? 'bg-white text-neutral-950 hover:bg-neutral-100'
+                    : 'bg-neutral-900 text-white hover:bg-neutral-800'
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Pilih</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

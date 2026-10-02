@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Product, CartItem } from '../types';
 import { formatRupiah } from '../utils/format';
 import { Search, Plus, Minus, ShoppingBag, ArrowRight, Tag } from 'lucide-react';
+import { ProductDetailModal } from './ProductDetailModal';
 
 interface KatalogViewProps {
   products: Product[];
@@ -25,6 +26,7 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
   const isDark = theme === 'dark';
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
 
   // Extract unique categories
   const categories = useMemo(() => {
@@ -159,13 +161,14 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
             return (
               <div
                 key={product.id}
-                className={`border rounded-2xl p-3 flex items-center gap-3 transition-all ${
+                onClick={() => setSelectedProductForDetail(product)}
+                className={`border rounded-2xl p-3 flex items-center gap-3 transition-all cursor-pointer group active:scale-[0.99] ${
                   isDark
                     ? inCartQty > 0
-                      ? 'border-neutral-600 bg-neutral-900'
+                      ? 'border-neutral-600 bg-neutral-900 hover:border-neutral-500'
                       : 'border-neutral-800 bg-neutral-900 hover:border-neutral-700'
                     : inCartQty > 0
-                    ? 'border-neutral-400 bg-white shadow-xs'
+                    ? 'border-neutral-400 bg-white hover:border-neutral-500 shadow-xs'
                     : 'border-neutral-200/90 bg-white hover:border-neutral-300 shadow-xs'
                 }`}
               >
@@ -258,14 +261,20 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
                 </div>
 
                 {/* Action Hitbox - Mobile Touch Ergonomics */}
-                <div className="flex-shrink-0 flex items-center">
+                <div
+                  className="flex-shrink-0 flex items-center"
+                  onClick={e => e.stopPropagation()}
+                >
                   {isOutOfStock ? (
                     <span className="text-[11px] text-neutral-400 font-medium px-2 py-1">
                       Habis
                     </span>
                   ) : inCartQty === 0 ? (
                     <button
-                      onClick={() => addToCart(product)}
+                      onClick={e => {
+                        e.stopPropagation();
+                        addToCart(product);
+                      }}
                       className={`min-h-[44px] min-w-[44px] px-3.5 py-2 active:scale-95 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
                         isDark
                           ? 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700'
@@ -285,7 +294,10 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
                       }`}
                     >
                       <button
-                        onClick={() => removeFromCart(product.id)}
+                        onClick={e => {
+                          e.stopPropagation();
+                          removeFromCart(product.id);
+                        }}
                         className={`w-7 h-7 rounded-lg flex items-center justify-center active:scale-90 transition-transform touch-manipulation ${
                           isDark
                             ? 'bg-neutral-700 text-white hover:bg-neutral-600'
@@ -303,7 +315,10 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
                         {inCartQty}
                       </span>
                       <button
-                        onClick={() => addToCart(product)}
+                        onClick={e => {
+                          e.stopPropagation();
+                          addToCart(product);
+                        }}
                         disabled={inCartQty >= product.stock}
                         className={`w-7 h-7 rounded-lg flex items-center justify-center active:scale-90 transition-transform disabled:opacity-30 touch-manipulation ${
                           isDark
@@ -371,6 +386,16 @@ export const KatalogView: React.FC<KatalogViewProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {selectedProductForDetail && (
+        <ProductDetailModal
+          product={selectedProductForDetail}
+          onClose={() => setSelectedProductForDetail(null)}
+          onAdd={addToCart}
+          theme={theme}
+        />
       )}
     </div>
   );

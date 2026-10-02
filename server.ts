@@ -25,13 +25,20 @@ const wrap =
 // Parse CLOUDINARY_URL (e.g. cloudinary://api_key:api_secret@cloud_name)
 function parseCloudinaryUrl(rawUrl?: string) {
   if (!rawUrl) return null;
-  const clean = rawUrl.trim().replace(/^['"]|['"]$/g, '');
+  let clean = rawUrl.trim().replace(/^['"]|['"]$/g, '');
+  // Bersihkan prefix jika pengguna menyalin "CLOUDINARY_URL=..."
+  clean = clean.replace(/^CLOUDINARY_URL\s*=\s*/i, '');
+
   const match = clean.match(/^cloudinary:\/\/([^:]+):([^@]+)@([^/\s?]+)/);
   if (match) {
+    const apiKey = match[1].replace(/[<>]/g, '').trim();
+    const apiSecret = match[2].replace(/[<>]/g, '').trim();
+    const cloudName = match[3].replace(/[<>]/g, '').trim();
+
     return {
-      apiKey: match[1],
-      apiSecret: match[2],
-      cloudName: match[3],
+      apiKey,
+      apiSecret,
+      cloudName,
     };
   }
   return null;
