@@ -1,10 +1,13 @@
-import fs from 'fs';
-import path from 'path';
 import { neon } from '@neondatabase/serverless';
 import type { Product, Customer, Order, StoreSettings } from '../src/types/index.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'database.json');
+const getSql = () => {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('DATABASE_URL belum diisi di Environment Variables Vercel');
+  return neon(url);
+};
+
+const j = (v: unknown) => JSON.stringify(v);
 
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: 'KOMA MINIMAL STORE',
@@ -21,7 +24,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   cloudinaryUploadPreset: 'ml_default',
   theme: 'light',
   adminPin: '1234',
-  neonDatabaseUrl: process.env.DATABASE_URL || '',
+  neonDatabaseUrl: '',
 };
 
 const DEFAULT_PRODUCTS: Product[] = [
@@ -204,115 +207,110 @@ const DEFAULT_ORDERS: Order[] = [
   },
 ];
 
-interface DatabaseSchema {
-  settings: StoreSettings;
-  products: Product[];
-  customers: Customer[];
-  orders: Order[];
-}
-
 export class ServerDatabase {
-  private data: DatabaseSchema;
+  private ready: Promise<void> | null = null;
 
-  constructor() {
-    this.ensureDataDir();
-    this.data = this.loadData();
-  }
-
-  private ensureDataDir(): void {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+  private async db() {
+    if (!this.ready) {
+      this.ready = this.setup().catch(err => {
+        this.ready = null;
+        throw err;
+      });
     }
+    await this.ready;
+    return getSql();
   }
 
-  private loadData(): DatabaseSchema {
-    try {
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
-        return {
-          settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
-          products: parsed.products || DEFAULT_PRODUCTS,
-          customers: parsed.customers || DEFAULT_CUSTOMERS,
-          orders: parsed.orders || DEFAULT_ORDERS,
-        };
-      }
-    } catch (e) {
-      console.error('Failed reading database file, using default seed:', e);
+  private async setup(): Promise<void> {
+    const sql = getSql();
+    await sql`CREATE TABLE IF NOT EXISTS app_products (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
+    await sql`CREATE TABLE IF NOT EXISTS app_customers (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
+    await sql`CREATE TABLE IF NOT EXISTS app_orders (seq BIGSERIAL, id TEXT PRIMARY KEY, data JSONB NOT NULL)`;
+    await sql`CREATE TABLE IF NOT EXISTS app_settings (id INT PRIMARY KEY, data JSONB NOT NULL)`;
+
+    const existing = await sql`SELECT id FROM app_settings WHERE id = 1`;
+    if (existing.length > 0) return;
+
+    // Isi data awal hanya sekali (database masih kosong)
+    await sql`INSERT INTO app_settings (id, data) VALUES (1, ${j(DEFAULT_SETTINGS)}::jsonb) ON CONFLICT (id) DO NOTHING`;
+    for (const p of DEFAULT_PRODUCTS) {
+      await sql`INSERT INTO app_products (id, data) VALUES (${p.id}, ${j(p)}::jsonb) ON CONFLICT (id) DO NOTHING`;
     }
-
-    const initial: DatabaseSchema = {
-      settings: DEFAULT_SETTINGS,
-      products: DEFAULT_PRODUCTS,
-      customers: DEFAULT_CUSTOMERS,
-      orders: DEFAULT_ORDERS,
-    };
-    this.persist(initial);
-    return initial;
-  }
-
-  private persist(data?: DatabaseSchema): void {
-    const toSave = data || this.data;
-    try {
-      this.ensureDataDir();
-      fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Failed saving database file:', e);
+    for (const c of DEFAULT_CUSTOMERS) {
+      await sql`INSERT INTO app_customers (id, data) VALUES (${c.id}, ${j(c)}::jsonb) ON CONFLICT (id) DO NOTHING`;
+    }
+    for (const o of DEFAULT_ORDERS) {
+      await sql`INSERT INTO app_orders (id, data) VALUES (${o.id}, ${j(o)}::jsonb) ON CONFLICT (id) DO NOTHING`;
     }
   }
 
   // -------------------------
   // Products
   // -------------------------
-  public getProducts(): Product[] {
-    return this.data.products;
+  private async saveProduct(p: Product): Promise<void> {
+    const sql = await this.db();
+    await sql`UPDATE app_products SET data = ${j(p)}::jsonb WHERE id = ${p.id}`;
   }
 
-  public getProductById(id: string): Product | undefined {
-    return this.data.products.find(p => p.id === id);
+  public async getProducts(): Promise<Product[]> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_products ORDER BY seq ASC`;
+    return r.map(x => x.data as Product);
   }
 
-  public createProduct(product: Omit<Product, 'id'> & { id?: string }): Product {
+  public async getProductById(id: string): Promise<Product | undefined> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_products WHERE id = ${id}`;
+    return r[0]?.data as Product | undefined;
+  }
+
+  public async createProduct(product: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
+    const sql = await this.db();
     const newProduct: Product = {
       ...product,
       id: product.id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       isActive: product.isActive !== undefined ? product.isActive : true,
     };
-    this.data.products.push(newProduct);
-    this.persist();
+    await sql`INSERT INTO app_products (id, data) VALUES (${newProduct.id}, ${j(newProduct)}::jsonb)`;
     return newProduct;
   }
 
-  public updateProduct(id: string, updates: Partial<Product>): Product | null {
-    const index = this.data.products.findIndex(p => p.id === id);
-    if (index === -1) return null;
-    this.data.products[index] = { ...this.data.products[index], ...updates };
-    this.persist();
-    return this.data.products[index];
+  public async updateProduct(id: string, updates: Partial<Product>): Promise<Product | null> {
+    const current = await this.getProductById(id);
+    if (!current) return null;
+    const next = { ...current, ...updates, id };
+    await this.saveProduct(next);
+    return next;
   }
 
-  public deleteProduct(id: string): boolean {
-    const initLen = this.data.products.length;
-    this.data.products = this.data.products.filter(p => p.id !== id);
-    if (this.data.products.length !== initLen) {
-      this.persist();
-      return true;
-    }
-    return false;
+  public async deleteProduct(id: string): Promise<boolean> {
+    const sql = await this.db();
+    const r = await sql`DELETE FROM app_products WHERE id = ${id} RETURNING id`;
+    return r.length > 0;
   }
 
   // -------------------------
   // Customers (Automatic CRM)
   // -------------------------
-  public getCustomers(): Customer[] {
-    return this.data.customers;
+  private async saveCustomer(c: Customer): Promise<void> {
+    const sql = await this.db();
+    await sql`UPDATE app_customers SET data = ${j(c)}::jsonb WHERE id = ${c.id}`;
   }
 
-  public getCustomerById(id: string): Customer | undefined {
-    return this.data.customers.find(c => c.id === id);
+  public async getCustomers(): Promise<Customer[]> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_customers ORDER BY seq DESC`;
+    return r.map(x => x.data as Customer);
   }
 
-  public createCustomer(cust: Omit<Customer, 'id'> & { id?: string }): Customer {
+  public async getCustomerById(id: string): Promise<Customer | undefined> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_customers WHERE id = ${id}`;
+    return r[0]?.data as Customer | undefined;
+  }
+
+  public async createCustomer(cust: Omit<Customer, 'id'> & { id?: string }): Promise<Customer> {
+    const sql = await this.db();
     const newCust: Customer = {
       ...cust,
       id: cust.id || `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -321,150 +319,144 @@ export class ServerDatabase {
       totalSpent: cust.totalSpent || 0,
       ordersCount: cust.ordersCount || 0,
     };
-    this.data.customers.unshift(newCust);
-    this.persist();
+    await sql`INSERT INTO app_customers (id, data) VALUES (${newCust.id}, ${j(newCust)}::jsonb)`;
     return newCust;
   }
 
-  public updateCustomer(id: string, updates: Partial<Customer>): Customer | null {
-    const index = this.data.customers.findIndex(c => c.id === id);
-    if (index === -1) return null;
-    this.data.customers[index] = { ...this.data.customers[index], ...updates };
-    this.persist();
-    return this.data.customers[index];
+  public async updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer | null> {
+    const current = await this.getCustomerById(id);
+    if (!current) return null;
+    const next = { ...current, ...updates, id };
+    await this.saveCustomer(next);
+    return next;
   }
 
-  public recordCustomerFromOrder(name: string, phone: string, total: number): Customer {
+  public async recordCustomerFromOrder(name: string, phone: string, total: number): Promise<Customer> {
+    const sql = await this.db();
     const cleanPhone = phone.replace(/[^0-9+]/g, '').trim();
     const cleanName = name.trim() || 'Pelanggan Umum';
     const nowIso = new Date().toISOString();
+    const customers = await this.getCustomers();
 
-    let existingIndex = -1;
+    let existing: Customer | undefined;
     if (cleanPhone) {
-      existingIndex = this.data.customers.findIndex(
-        c => c.phone.replace(/[^0-9+]/g, '') === cleanPhone
-      );
+      existing = customers.find(c => (c.phone || '').replace(/[^0-9+]/g, '') === cleanPhone);
     }
-    if (existingIndex === -1 && cleanName && cleanName !== 'Pelanggan Umum') {
-      existingIndex = this.data.customers.findIndex(
-        c => c.name.toLowerCase() === cleanName.toLowerCase()
-      );
+    if (!existing && cleanName !== 'Pelanggan Umum') {
+      existing = customers.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
     }
 
-    if (existingIndex >= 0) {
-      const existing = this.data.customers[existingIndex];
+    if (existing) {
       existing.totalSpent = (existing.totalSpent || 0) + total;
       existing.ordersCount = (existing.ordersCount || 0) + 1;
       existing.lastVisit = nowIso;
-      if (cleanName && cleanName !== 'Pelanggan Umum' && (!existing.name || existing.name === 'Pelanggan Umum')) {
+      if (cleanName !== 'Pelanggan Umum' && (!existing.name || existing.name === 'Pelanggan Umum')) {
         existing.name = cleanName;
       }
-      if (cleanPhone && !existing.phone) {
-        existing.phone = cleanPhone;
-      }
-      this.data.customers[existingIndex] = existing;
-      this.persist();
+      if (cleanPhone && !existing.phone) existing.phone = cleanPhone;
+      await this.saveCustomer(existing);
       return existing;
-    } else {
-      const newCust: Customer = {
-        id: `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        name: cleanName,
-        phone: cleanPhone || '',
-        totalSpent: total,
-        ordersCount: 1,
-        firstVisit: nowIso,
-        lastVisit: nowIso,
-        notes: 'Pencatatan otomatis dari pesanan kasir',
-      };
-      this.data.customers.unshift(newCust);
-      this.persist();
-      return newCust;
     }
+
+    const newCust: Customer = {
+      id: `cust-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: cleanName,
+      phone: cleanPhone || '',
+      totalSpent: total,
+      ordersCount: 1,
+      firstVisit: nowIso,
+      lastVisit: nowIso,
+      notes: 'Pencatatan otomatis dari pesanan kasir',
+    };
+    await sql`INSERT INTO app_customers (id, data) VALUES (${newCust.id}, ${j(newCust)}::jsonb)`;
+    return newCust;
   }
 
   // -------------------------
   // Orders
   // -------------------------
-  public getOrders(): Order[] {
-    return this.data.orders;
+  public async getOrders(): Promise<Order[]> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_orders ORDER BY seq DESC`;
+    return r.map(x => x.data as Order);
   }
 
-  public getOrderById(id: string): Order | undefined {
-    return this.data.orders.find(o => o.id === id);
+  public async getOrderById(id: string): Promise<Order | undefined> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_orders WHERE id = ${id}`;
+    return r[0]?.data as Order | undefined;
   }
 
-  public createOrder(orderInput: Order): { order: Order; customer: Customer } {
-    // 1. Record customer automatically
-    const customer = this.recordCustomerFromOrder(
+  public async createOrder(orderInput: Order): Promise<{ order: Order; customer: Customer }> {
+    const sql = await this.db();
+
+    // 1. Catat customer otomatis
+    const customer = await this.recordCustomerFromOrder(
       orderInput.customerName,
       orderInput.customerPhone || '',
       orderInput.total
     );
 
-    // 2. Deduct product stock
-    orderInput.items.forEach(item => {
-      const prod = this.data.products.find(p => p.id === item.productId);
+    // 2. Potong stok
+    for (const item of orderInput.items) {
+      const prod = await this.getProductById(item.productId);
       if (prod) {
         prod.stock = Math.max(0, prod.stock - item.quantity);
+        await this.saveProduct(prod);
       }
-    });
+    }
 
-    // 3. Attach customer ID & finalize order
+    // 3. Simpan order
     const finalizedOrder: Order = {
       ...orderInput,
       customerId: customer.id,
       createdAt: orderInput.createdAt || new Date().toISOString(),
     };
-
-    this.data.orders.unshift(finalizedOrder);
-    this.persist();
+    await sql`INSERT INTO app_orders (id, data) VALUES (${finalizedOrder.id}, ${j(finalizedOrder)}::jsonb)`;
 
     return { order: finalizedOrder, customer };
   }
 
-  public updateOrder(
+  public async updateOrder(
     id: string,
     updates: Partial<
       Pick<Order, 'customerName' | 'customerPhone' | 'paymentMethod' | 'items' | 'discount' | 'tax' | 'notes'>
     >
-  ): Order | null {
-    const index = this.data.orders.findIndex(o => o.id === id);
-    if (index === -1) return null;
+  ): Promise<Order | null> {
+    const sql = await this.db();
+    const current = await this.getOrderById(id);
+    if (!current) return null;
 
-    const current = this.data.orders[index];
     const next: Order = { ...current };
 
     if (updates.customerName !== undefined && updates.customerName.trim()) {
       next.customerName = updates.customerName.trim();
     }
-    if (updates.customerPhone !== undefined) {
-      next.customerPhone = updates.customerPhone.trim();
-    }
-    if (updates.paymentMethod !== undefined) {
-      next.paymentMethod = updates.paymentMethod;
-    }
-    if (updates.notes !== undefined) {
-      next.notes = updates.notes;
-    }
+    if (updates.customerPhone !== undefined) next.customerPhone = updates.customerPhone.trim();
+    if (updates.paymentMethod !== undefined) next.paymentMethod = updates.paymentMethod;
+    if (updates.notes !== undefined) next.notes = updates.notes;
 
-    // Item berubah: sesuaikan stok & hitung ulang total
     if (updates.items !== undefined) {
-      if (updates.items.length === 0) {
-        throw new Error('Invoice minimal harus punya 1 item.');
+      if (updates.items.length === 0) throw new Error('Invoice minimal harus punya 1 item.');
+
+      // Kembalikan stok item lama
+      for (const item of current.items) {
+        const prod = await this.getProductById(item.productId);
+        if (prod) {
+          prod.stock += item.quantity;
+          await this.saveProduct(prod);
+        }
+      }
+      // Potong stok item baru
+      for (const item of updates.items) {
+        const prod = await this.getProductById(item.productId);
+        if (prod) {
+          prod.stock = Math.max(0, prod.stock - item.quantity);
+          await this.saveProduct(prod);
+        }
       }
 
-      // 1. Kembalikan stok dari item lama
-      current.items.forEach(item => {
-        const prod = this.data.products.find(p => p.id === item.productId);
-        if (prod) prod.stock += item.quantity;
-      });
-
-      // 2. Potong stok sesuai item baru
-      updates.items.forEach(item => {
-        const prod = this.data.products.find(p => p.id === item.productId);
-        if (prod) prod.stock = Math.max(0, prod.stock - item.quantity);
-      });
-
+      // Subtotal dihitung ulang di server
       next.items = updates.items.map(it => ({
         ...it,
         subtotal:
@@ -474,13 +466,11 @@ export class ServerDatabase {
       }));
     }
 
-    // Hitung ulang subtotal & total di server
     next.subtotal = next.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0);
     if (updates.discount !== undefined) next.discount = Math.max(0, Number(updates.discount) || 0);
     if (updates.tax !== undefined) next.tax = Math.max(0, Number(updates.tax) || 0);
     next.total = Math.max(0, next.subtotal - (next.discount || 0) + (next.tax || 0));
 
-    // Kembalian tunai ikut menyesuaikan
     if (next.cashGiven !== undefined && next.cashGiven !== null) {
       next.cashChange = Math.max(0, next.cashGiven - next.total);
     }
@@ -488,28 +478,35 @@ export class ServerDatabase {
     // Selisih total masuk ke total belanja customer
     const diff = next.total - current.total;
     if (diff !== 0 && current.customerId) {
-      const cust = this.data.customers.find(c => c.id === current.customerId);
-      if (cust) cust.totalSpent = Math.max(0, (cust.totalSpent || 0) + diff);
+      const cust = await this.getCustomerById(current.customerId);
+      if (cust) {
+        cust.totalSpent = Math.max(0, (cust.totalSpent || 0) + diff);
+        await this.saveCustomer(cust);
+      }
     }
 
-    this.data.orders[index] = next;
-    this.persist();
+    await sql`UPDATE app_orders SET data = ${j(next)}::jsonb WHERE id = ${id}`;
     return next;
   }
 
   // -------------------------
   // Settings
   // -------------------------
-  public getSettings(): StoreSettings {
-    return this.data.settings;
+  public async getSettings(): Promise<StoreSettings> {
+    const sql = await this.db();
+    const r = await sql`SELECT data FROM app_settings WHERE id = 1`;
+    return { ...DEFAULT_SETTINGS, ...(r[0]?.data || {}), neonDatabaseUrl: '' };
   }
 
-  public updateSettings(settings: Partial<StoreSettings>): StoreSettings {
-    this.data.settings = { ...this.data.settings, ...settings };
-    this.persist();
-    return this.data.settings;
+  public async updateSettings(settings: Partial<StoreSettings>): Promise<StoreSettings> {
+    const sql = await this.db();
+    const { neonDatabaseUrl, ...safe } = settings; // URL database tidak disimpan
+    const current = await this.getSettings();
+    const next: StoreSettings = { ...current, ...safe };
+    await sql`INSERT INTO app_settings (id, data) VALUES (1, ${j(next)}::jsonb)
+              ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`;
+    return next;
   }
-
   // -------------------------
   // Neon PostgreSQL Integration
   // -------------------------
@@ -536,6 +533,8 @@ export class ServerDatabase {
   public async syncToNeon(connectionString: string): Promise<{ success: boolean; message: string; rowsAffected?: number }> {
     try {
       const sql = neon(connectionString);
+      const allProducts = await this.getProducts();
+      const allCustomers = await this.getCustomers();
 
       // Create tables in Neon
       await sql`
@@ -591,7 +590,7 @@ export class ServerDatabase {
       `;
 
       // Upsert products to Neon
-      for (const p of this.data.products) {
+      for (const p of allProducts) {
         await sql`
           INSERT INTO products (id, name, category, price, cost_price, stock, unit, sku, description, is_active)
           VALUES (${p.id}, ${p.name}, ${p.category}, ${p.price}, ${p.costPrice || 0}, ${p.stock}, ${p.unit}, ${p.sku || ''}, ${p.description || ''}, ${p.isActive})
@@ -603,7 +602,7 @@ export class ServerDatabase {
       }
 
       // Upsert customers to Neon
-      for (const c of this.data.customers) {
+      for (const c of allCustomers) {
         await sql`
           INSERT INTO customers (id, name, phone, email, address, total_spent, orders_count, notes)
           VALUES (${c.id}, ${c.name}, ${c.phone || ''}, ${c.email || ''}, ${c.address || ''}, ${c.totalSpent}, ${c.ordersCount}, ${c.notes || ''})

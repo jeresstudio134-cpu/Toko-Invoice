@@ -193,8 +193,9 @@ export default function App() {
       if (updated.theme) {
         setTheme(updated.theme);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed updating settings:', err);
+      alert('Gagal menyimpan pengaturan ke database: ' + err.message);
     }
   };
 
