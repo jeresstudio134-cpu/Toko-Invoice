@@ -378,13 +378,13 @@ export const KasirView: React.FC<KasirViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-900 dark:text-white">
             <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className={isDark ? 'text-white' : 'text-neutral-900'}>Pencatatan Customer Otomatis</span>
+            <span className={isDark ? 'text-white' : 'text-neutral-900'}>Data Customer</span>
           </div>
-          <span className="text-[10px] text-neutral-400 font-mono">CRM Auto-Save</span>
+          
         </div>
 
         <p className="text-[11px] text-neutral-500">
-          Data nama dan nomor WA akan otomatis disimpan ke database pelanggan beserta riwayat belanjanya.
+          Data pelanggan & riwayat transaksi tersimpan otomatis.
         </p>
 
         <div className="space-y-2 pt-1">
