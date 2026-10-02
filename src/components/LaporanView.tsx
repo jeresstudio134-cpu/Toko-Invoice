@@ -30,7 +30,6 @@ interface LaporanViewProps {
 
 type Timeframe = 'today' | '7days' | 'month' | 'all';
 type PaymentFilter = 'all' | 'tunai' | 'qris' | 'transfer' | 'debit';
-type StatusFilter = 'all' | 'lunas' | 'belum';
 
 const FilterChip: React.FC<{
   label: string;
@@ -72,11 +71,12 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [isCustomRange, setIsCustomRange] = useState(false);
+
+  // Rentang tanggal aktif kalau salah satu kolom terisi
+  const hasCustomRange = !!(customStart || customEnd);
 
   // Edit invoice (admin only)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -226,7 +226,7 @@ const filteredOrders = useMemo(() => {
     const orderDate = new Date(order.createdAt);
 
     // Timeframe
-    if (isCustomRange) {
+    if (hasCustomRange) {
       // Custom range: start & end (format YYYY-MM-DD)
       if (customStart) {
         const start = new Date(customStart + 'T00:00:00');
@@ -256,12 +256,7 @@ const filteredOrders = useMemo(() => {
       return false;
     }
 
-    // Payment status
-    if (statusFilter !== 'all') {
-      const status = (order.paymentStatus || '').toLowerCase();
-      if (statusFilter === 'lunas' && status !== 'lunas' && status !== 'paid') return false;
-      if (statusFilter === 'belum' && status !== 'belum' && status !== 'unpaid' && status !== 'pending') return false;
-    }
+    
 
     // Search: invoiceNumber atau customerName
     if (q) {
@@ -275,11 +270,10 @@ const filteredOrders = useMemo(() => {
 }, [
   orders,
   timeframe,
-  isCustomRange,
+  hasCustomRange,
   customStart,
   customEnd,
   paymentFilter,
-  statusFilter,
   searchQuery,
 ]);
 
@@ -348,8 +342,11 @@ const filteredOrders = useMemo(() => {
     return map;
   }, [filteredOrders]);
 
-  const handleExportCsv = () => {
-    const headers = [
+const handleExportExcel = async () => {
+    const XLSX = await import('xlsx');
+
+    const header = [
+      'No',
       'No Nota',
       'Tanggal',
       'Nama Pelanggan',
@@ -361,53 +358,120 @@ const filteredOrders = useMemo(() => {
       'Metode Bayar',
       'Status',
     ];
-    const rows = filteredOrders.map(o => [
-      `"${o.invoiceNumber}"`,
-      `"${o.createdAt}"`,
-      `"${o.customerName.replace(/"/g, '""')}"`,
-      `"${o.customerPhone || ''}"`,
+
+    const dataRows = filteredOrders.map((o, i) => [
+      i + 1,
+      o.invoiceNumber,
+      formatDate(o.createdAt),
+      o.customerName,
+      o.customerPhone || '',
       o.subtotal,
-      o.discount,
-      o.tax,
+      o.discount || 0,
+      o.tax || 0,
       o.total,
-      `"${o.paymentMethod}"`,
-      `"${o.paymentStatus}"`,
+      (o.paymentMethod || 'tunai').toUpperCase(),
+      o.paymentStatus || '',
     ]);
 
-    // BOM + Blob agar Excel membaca UTF-8 dengan benar
-    const csvContent =
-      '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    // Ringkasan total (ditaruh di sisi kanan tabel)
+    const methods = Array.from(
+      new Set([
+        'tunai',
+        'qris',
+        'transfer',
+        'debit',
+        ...filteredOrders.map(o => o.paymentMethod || 'tunai'),
+      ])
+    );
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `laporan_penjualan_${timeframe}_${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const summary: any[][] = [
+      ['Metode Bayar', 'Jumlah Nota', 'Total'],
+      ...methods.map(m => {
+        const list = filteredOrders.filter(o => (o.paymentMethod || 'tunai') === m);
+        return [
+          m.toUpperCase(),
+          list.length,
+          list.reduce((a, o) => a + (o.total || 0), 0),
+        ];
+      }),
+      [
+        'TOTAL KESELURUHAN',
+        filteredOrders.length,
+        filteredOrders.reduce((a, o) => a + (o.total || 0), 0),
+      ],
+    ];
+
+    // Gabungkan: tabel di kiri (kolom A-K), kolom L kosong, ringkasan di M-O
+    const aoa: any[][] = [
+      ['Laporan Penjualan'],
+      [`Dicetak: ${formatDate(new Date().toISOString())}`],
+      [],
+    ];
+    const bodyRows = Math.max(dataRows.length + 1, summary.length);
+    for (let i = 0; i < bodyRows; i++) {
+      const left = [...(i === 0 ? header : dataRows[i - 1] || [])];
+      while (left.length < header.length) left.push('');
+      const right = summary[i];
+      aoa.push(right ? [...left, '', ...right] : left);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Lebar kolom
+    ws['!cols'] = [
+      { wch: 5 },
+      { wch: 22 },
+      { wch: 20 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 3 },  // pemisah
+      { wch: 24 }, // Metode Bayar (ringkasan)
+      { wch: 13 }, // Jumlah Nota
+      { wch: 16 }, // Total
+    ];
+
+    // Format angka ribuan: Subtotal-Total (F-I) dan ringkasan (N-O)
+    for (let r = 4; r < aoa.length; r++) {
+      for (const c of [5, 6, 7, 8, 13, 14]) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cell && typeof cell.v === 'number') cell.z = '#,##0';
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Laporan');
+
+    const label = hasCustomRange
+      ? `${customStart || 'awal'}_sd_${customEnd || 'akhir'}`
+      : timeframe;
+    XLSX.writeFile(
+      wb,
+      `laporan_penjualan_${label}_${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
   };
 
 const resetFilters = () => {
   setSearchQuery('');
   setPaymentFilter('all');
-  setStatusFilter('all');
   setCustomStart('');
   setCustomEnd('');
-  setIsCustomRange(false);
+  setTimeframe('all');
 };
 
 const activeFilterCount = useMemo(() => {
   let n = 0;
   if (searchQuery.trim()) n++;
   if (paymentFilter !== 'all') n++;
-  if (statusFilter !== 'all') n++;
-  if (isCustomRange) n++;
+  if (hasCustomRange) n++;
+  else if (timeframe !== 'all') n++;
   return n;
-}, [searchQuery, paymentFilter, statusFilter, isCustomRange]);
+}, [searchQuery, paymentFilter, hasCustomRange, timeframe]);
 
   return (
     <div className="pb-28 px-4 pt-3 max-w-md mx-auto space-y-4">
@@ -426,7 +490,7 @@ const activeFilterCount = useMemo(() => {
           </p>
         </div>
         <button
-          onClick={handleExportCsv}
+          onClick={handleExportExcel}
           className={`px-3 py-1.5 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 active:scale-95 transition-all ${
             isDark
               ? 'bg-neutral-800 text-neutral-200 border-neutral-700 hover:bg-neutral-750'
@@ -434,39 +498,11 @@ const activeFilterCount = useMemo(() => {
           }`}
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export CSV</span>
+          <span>Export Excel</span>
         </button>
       </div>
 
-      {/* Timeframe Filter Tabs */}
-      <div
-        className={`grid grid-cols-4 gap-1 p-1 rounded-xl border text-xs ${
-          isDark
-            ? 'bg-neutral-900 border-neutral-800'
-            : 'bg-white border-neutral-200 shadow-xs'
-        }`}
-      >
-        {[
-          { id: 'today' as Timeframe, label: 'Hari Ini' },
-          { id: '7days' as Timeframe, label: '7 Hari' },
-          { id: 'month' as Timeframe, label: 'Bulan Ini' },
-          { id: 'all' as Timeframe, label: 'Semua' },
-        ].map(item => (
-          <button
-            key={item.id}
-            onClick={() => setTimeframe(item.id)}
-            className={`py-1.5 text-center rounded-lg text-[11px] font-bold transition-all ${
-              timeframe === item.id
-                ? isDark
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-500 hover:text-neutral-900'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      
 
 {/* Filter Panel */}
 <div className="space-y-2">
@@ -540,6 +576,15 @@ const activeFilterCount = useMemo(() => {
           isDark={isDark}
         />
       )}
+      {!hasCustomRange && timeframe !== 'all' && (
+        <FilterChip
+          label={`Periode: ${
+            { today: 'Hari Ini', '7days': '7 Hari', month: 'Bulan Ini', all: 'Semua' }[timeframe]
+          }`}
+          onRemove={() => setTimeframe('all')}
+          isDark={isDark}
+        />
+      )}
       {paymentFilter !== 'all' && (
         <FilterChip
           label={`Bayar: ${paymentFilter.toUpperCase()}`}
@@ -547,18 +592,10 @@ const activeFilterCount = useMemo(() => {
           isDark={isDark}
         />
       )}
-      {statusFilter !== 'all' && (
-        <FilterChip
-          label={`Status: ${statusFilter === 'lunas' ? 'Lunas' : 'Belum Lunas'}`}
-          onRemove={() => setStatusFilter('all')}
-          isDark={isDark}
-        />
-      )}
-      {isCustomRange && (customStart || customEnd) && (
+      {hasCustomRange && (
         <FilterChip
           label={`${customStart || '...'} → ${customEnd || '...'}`}
           onRemove={() => {
-            setIsCustomRange(false);
             setCustomStart('');
             setCustomEnd('');
           }}
@@ -611,23 +648,29 @@ const activeFilterCount = useMemo(() => {
         </div>
       </div>
 
-      {/* Status bayar */}
+      
+      {/* Periode cepat */}
       <div>
         <label className="text-[10px] text-neutral-500 uppercase font-bold block mb-1.5">
-          Status Bayar
+          Periode
         </label>
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           {([
+            { id: 'today', label: 'Hari Ini' },
+            { id: '7days', label: '7 Hari' },
+            { id: 'month', label: 'Bulan Ini' },
             { id: 'all', label: 'Semua' },
-            { id: 'lunas', label: 'Lunas' },
-            { id: 'belum', label: 'Belum' },
-          ] as { id: StatusFilter; label: string }[]).map(s => (
+          ] as { id: Timeframe; label: string }[]).map(item => (
             <button
-              key={s.id}
+              key={item.id}
               type="button"
-              onClick={() => setStatusFilter(s.id)}
+              onClick={() => {
+                setTimeframe(item.id);
+                setCustomStart('');
+                setCustomEnd('');
+              }}
               className={`py-1.5 rounded-lg text-[10px] font-bold transition-colors ${
-                statusFilter === s.id
+                !hasCustomRange && timeframe === item.id
                   ? isDark
                     ? 'bg-white text-neutral-950'
                     : 'bg-neutral-900 text-white'
@@ -636,67 +679,51 @@ const activeFilterCount = useMemo(() => {
                     : 'bg-neutral-100 text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              {s.label}
+              {item.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Custom date range */}
+      {/* Rentang tanggal (selalu tampil) */}
       <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-[10px] text-neutral-500 uppercase font-bold">
-            Rentang Tanggal Custom
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              setIsCustomRange(v => !v);
-              if (isCustomRange) {
-                setCustomStart('');
-                setCustomEnd('');
-              }
-            }}
-            className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-              isCustomRange
-                ? 'bg-emerald-500 text-white'
-                : isDark
-                  ? 'bg-neutral-800 text-neutral-400'
-                  : 'bg-neutral-100 text-neutral-500'
-            }`}
-          >
-            {isCustomRange ? 'ON' : 'OFF'}
-          </button>
-        </div>
-        {isCustomRange && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[9px] text-neutral-500 block mb-0.5">Dari</label>
-              <input
-                type="date"
-                value={customStart}
-                onChange={e => setCustomStart(e.target.value)}
-                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
-                  isDark
-                    ? 'bg-neutral-800 text-white border-neutral-700'
-                    : 'bg-neutral-50 text-neutral-900 border-neutral-200'
-                }`}
-              />
-            </div>
-            <div>
-              <label className="text-[9px] text-neutral-500 block mb-0.5">Sampai</label>
-              <input
-                type="date"
-                value={customEnd}
-                onChange={e => setCustomEnd(e.target.value)}
-                className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
-                  isDark
-                    ? 'bg-neutral-800 text-white border-neutral-700'
-                    : 'bg-neutral-50 text-neutral-900 border-neutral-200'
-                }`}
-              />
-            </div>
+        <label className="text-[10px] text-neutral-500 uppercase font-bold block mb-1.5">
+          Rentang Tanggal
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[9px] text-neutral-500 block mb-0.5">Dari</label>
+            <input
+              type="date"
+              value={customStart}
+              max={customEnd || undefined}
+              onChange={e => setCustomStart(e.target.value)}
+              className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                isDark
+                  ? 'bg-neutral-800 text-white border-neutral-700'
+                  : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+              }`}
+            />
           </div>
+          <div>
+            <label className="text-[9px] text-neutral-500 block mb-0.5">Sampai</label>
+            <input
+              type="date"
+              value={customEnd}
+              min={customStart || undefined}
+              onChange={e => setCustomEnd(e.target.value)}
+              className={`w-full text-xs p-2 rounded-lg border outline-none font-mono ${
+                isDark
+                  ? 'bg-neutral-800 text-white border-neutral-700'
+                  : 'bg-neutral-50 text-neutral-900 border-neutral-200'
+              }`}
+            />
+          </div>
+        </div>
+        {hasCustomRange && (
+          <p className="text-[10px] text-neutral-500 mt-1.5">
+            Rentang tanggal dipakai menggantikan tab Hari Ini / 7 Hari / Bulan Ini.
+          </p>
         )}
       </div>
     </div>
