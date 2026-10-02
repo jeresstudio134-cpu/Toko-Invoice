@@ -54,8 +54,7 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
   onGoBackToKatalog,
 }) => {
   const isDark = theme === 'dark';
-  const [activeSection, setActiveSection] = useState<'integrasi' | 'toko' | 'produk' | 'keamanan'>('integrasi');
-
+  const [activeSection, setActiveSection] = useState<'toko' | 'produk' | 'keamanan'>('toko');
   // Admin PIN input state for gate
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -338,7 +337,7 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
             Akses Admin Database & Pengaturan
           </h2>
           <p className="text-xs text-neutral-500 max-w-xs mx-auto leading-relaxed">
-            Halaman ini khusus pemilik toko/admin untuk konfigurasi database Neon, Cloudinary, dan data sistem.
+            Halaman ini khusus pemilik toko/admin untuk konfigurasi toko, menu, dan keamanan.
           </p>
         </div>
 
@@ -477,7 +476,7 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
               <span>Admin Aktif</span>
             </span>
           </div>
-          <p className="text-[11px] text-neutral-500">Konfigurasi database Neon, Cloudinary, & sistem</p>
+          <p className="text-[11px] text-neutral-500">Konfigurasi toko & sistem</p>
         </div>
 
         {/* Lock / Logout Admin Button */}
@@ -497,20 +496,11 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
 
       {/* Nav Sub-Tabs for Admin Sections */}
       <div
-        className={`grid grid-cols-4 gap-1 p-1 rounded-xl border text-xs ${
+        className={`grid grid-cols-3 gap-1 p-1 rounded-xl border text-xs ${
           isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-xs'
         }`}
       >
-        <button
-          onClick={() => setActiveSection('integrasi')}
-          className={`py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
-            activeSection === 'integrasi'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-neutral-500 hover:text-emerald-600'
-          }`}
-        >
-          Integrasi
-        </button>
+        
         <button
           onClick={() => setActiveSection('toko')}
           className={`py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
@@ -550,237 +540,6 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
       {/* ------------------------------------------------------------- */}
       {/* SECTION: NEON DATABASE POSTGRESQL                             */}
       {/* ------------------------------------------------------------- */}
-      {activeSection === 'integrasi' && (
-        <div className="space-y-3.5">
-          <div
-            className={`border rounded-2xl p-4 space-y-3 ${
-              isDark
-                ? 'bg-neutral-900 border-emerald-900/60'
-                : 'bg-white border-emerald-200 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700/80 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                  <Database className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-                    Neon PostgreSQL Configuration
-                  </h3>
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Serverless Database Engine</p>
-                </div>
-              </div>
-              <a
-                href="https://console.neon.tech"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-neutral-500 hover:text-neutral-900 flex items-center gap-1 font-medium"
-              >
-                <span>Neon Console</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Konfigurasikan connection string Neon PostgreSQL Anda untuk deployment di <strong>Vercel</strong>.
-            </p>
-
-            {/* Neon Connection String Input */}
-            <div className="space-y-1.5 pt-1">
-              <label className="text-[11px] text-neutral-500 font-medium block">
-                Neon DATABASE_URL (Connection String)
-              </label>
-              <input
-                type="text"
-                value={neonDbUrl}
-                onChange={e => setNeonDbUrl(e.target.value)}
-                placeholder="postgresql://user:password@ep-xyz.neon.tech/neondb?sslmode=require"
-                className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                  isDark
-                    ? 'bg-neutral-800 text-white border-neutral-700'
-                    : 'bg-neutral-50 text-neutral-900 border-neutral-200 focus:bg-white'
-                }`}
-              />
-            </div>
-
-            {/* Action Buttons for Neon */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleTestNeonConnection}
-                disabled={isTestingDb}
-                className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border active:scale-95 transition-all flex items-center justify-center gap-1.5 ${
-                  isDark
-                    ? 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-750'
-                    : 'bg-neutral-100 border-neutral-200 text-neutral-800 hover:bg-neutral-200'
-                }`}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTestingDb ? 'animate-spin' : ''}`} />
-                <span>Tes Koneksi</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveStoreSettings}
-                className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl text-white active:scale-95 transition-all flex items-center justify-center gap-1.5 ${
-                  isDark ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-neutral-900 hover:bg-neutral-800'
-                }`}
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Simpan URL DB</span>
-              </button>
-            </div>
-
-            {/* Test result message */}
-            {dbTestResult && (
-              <div className="p-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-750 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono">
-                {dbTestResult}
-              </div>
-            )}
-
-            {/* Direct Sync to Neon Button */}
-            <button
-              type="button"
-              onClick={handleSyncNeon}
-              disabled={isSyncingNeon}
-              className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNeon ? 'animate-spin' : ''}`} />
-              <span>{isSyncingNeon ? 'Menyinkronkan ke Neon...' : 'Sinkronkan Data ke Neon PostgreSQL Sekarang'}</span>
-            </button>
-
-            {neonSyncNotice && (
-              <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950 border border-sky-200 dark:border-sky-800 text-[11px] text-sky-800 dark:text-sky-300 font-medium text-center">
-                {neonSyncNotice}
-              </div>
-            )}
-
-            {/* One click SQL DDL & Seed Script */}
-            <button
-              onClick={handleCopyNeonSql}
-              className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xs"
-            >
-              {copiedSql ? (
-                <>
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>Skrip SQL Neon Berhasil Disalin!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>Salin Skrip SQL Skema & Data (DDL)</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Vercel Deployment Instructions */}
-          <div
-            className={`border rounded-2xl p-4 space-y-2.5 text-xs ${
-              isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-xs'
-            }`}
-          >
-            <h4 className={`font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-              <Code2 className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Panduan Vercel + Neon</span>
-            </h4>
-            <ol className="list-decimal list-inside space-y-1.5 text-neutral-600 dark:text-neutral-300 leading-normal">
-              <li>
-                Di <strong className={isDark ? 'text-white' : 'text-neutral-900'}>console.neon.tech</strong>, klik menu <em>SQL Editor</em>.
-              </li>
-              <li>
-                Klik tombol <strong>Salin Skrip SQL</strong> di atas, paste ke SQL Editor Neon, lalu jalankan (Run).
-              </li>
-              <li>
-                Di dashboard project <strong>Vercel</strong>, buka <em>Settings &gt; Environment Variables</em> dan pasang:
-                <div className="my-1 p-2 bg-neutral-950 text-emerald-400 rounded-lg font-mono text-[10px] break-all select-all">
-                  DATABASE_URL="postgres://user:password@ep-xyz.neon.tech/neondb?sslmode=require"
-                </div>
-              </li>
-            </ol>
-          </div>
-
-          {/* CLOUDINARY */}
-          <div
-            className={`border rounded-2xl p-4 space-y-3 ${
-              isDark
-                ? 'bg-neutral-900 border-sky-900/60'
-                : 'bg-white border-sky-200 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950 border border-sky-300 dark:border-sky-700/80 flex items-center justify-center text-sky-600 dark:text-sky-400">
-                  <Cloud className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-                    Cloudinary Image Storage
-                  </h3>
-                  <p className="text-[10px] text-sky-600 dark:text-sky-400 font-mono">Media Hosting & CDN</p>
-                </div>
-              </div>
-              <a
-                href="https://cloudinary.com/console"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-neutral-500 hover:text-neutral-900 flex items-center gap-1 font-medium"
-              >
-                <span>Cloudinary Console</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Masukkan Cloud Name & Upload Preset untuk memudahkan upload foto produk toko dengan optimasi otomatis.
-            </p>
-
-            <div className="space-y-2 pt-1">
-              <div>
-                <label className="text-[11px] text-neutral-500 font-medium block mb-1">
-                  Cloudinary Cloud Name
-                </label>
-                <input
-                  type="text"
-                  value={cloudName}
-                  onChange={e => setCloudName(e.target.value)}
-                  placeholder="cth: my-store-cloud"
-                  className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                    isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200 focus:bg-white'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] text-neutral-500 font-medium block mb-1">
-                  Upload Preset (Unsigned)
-                </label>
-                <input
-                  type="text"
-                  value={uploadPreset}
-                  onChange={e => setUploadPreset(e.target.value)}
-                  placeholder="cth: ml_default"
-                  className={`w-full text-xs p-2.5 rounded-xl border outline-none font-mono ${
-                    isDark ? 'bg-neutral-800 text-white border-neutral-700' : 'bg-neutral-50 text-neutral-900 border-neutral-200 focus:bg-white'
-                  }`}
-                />
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSaveStoreSettings}
-              className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl text-white active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-xs ${
-                isDark ? 'bg-sky-600 hover:bg-sky-500' : 'bg-neutral-900 hover:bg-neutral-800'
-              }`}
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Simpan Konfigurasi Cloudinary</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ------------------------------------------------------------- */}
       {/* SECTION: PROFIL TOKO & TEMA                                   */}
