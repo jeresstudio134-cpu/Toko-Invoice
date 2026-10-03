@@ -1,0 +1,225 @@
+{
+  "settings": {
+    "storeName": "JERES STUDIO",
+    "tagline": "Toko & Kasir HP",
+    "address": "Jl. Senopati No. 42, Jakarta Selatan",
+    "phone": "0812-8899-7722",
+    "receiptFooter": "Terima kasih atas kunjungan Anda!\nBarang yang sudah dibeli tidak dapat ditukar.",
+    "paperWidth": "58mm",
+    "taxPercent": 11,
+    "enableTax": false,
+    "currency": "IDR",
+    "qrisCodeText": "00020101021226590014ID.LINKAJA.WWW011893600911002234010202150000000000000005204581253033605802ID5914JERES STUDIO6007JAKARTA61051219062070703A01630454D1",
+    "qrisImageUrl": "",
+    "cloudinaryCloudName": "kios-minimalis",
+    "cloudinaryUploadPreset": "ml_default",
+    "theme": "light",
+    "adminPin": "1234",
+    "neonDatabaseUrl": ""
+  },
+  "products": [
+    {
+      "id": "prod-1",
+      "name": "Kopi Susu Aren Special",
+      "category": "Minuman",
+      "price": 22000,
+      "costPrice": 9500,
+      "stock": 45,
+      "unit": "cup",
+      "sku": "DRK-001",
+      "description": "Espresso double shot, susu segar, gula aren organik lokal",
+      "isActive": true
+    },
+    {
+      "id": "prod-2",
+      "name": "Matcha Latte Uji",
+      "category": "Minuman",
+      "price": 28000,
+      "costPrice": 12000,
+      "stock": 32,
+      "unit": "cup",
+      "sku": "DRK-002",
+      "description": "Matcha murni dari Uji Jepang dengan susu oat pilihan",
+      "isActive": true
+    },
+    {
+      "id": "prod-3",
+      "name": "Cold Brew Citrus Black",
+      "category": "Minuman",
+      "price": 25000,
+      "costPrice": 10000,
+      "stock": 20,
+      "unit": "botol",
+      "sku": "DRK-003",
+      "description": "Steeped 16 jam dengan hint citrus segar",
+      "isActive": true
+    },
+    {
+      "id": "prod-4",
+      "name": "Almond Butter Croissant",
+      "category": "Pastry",
+      "price": 26000,
+      "costPrice": 13000,
+      "stock": 18,
+      "unit": "pcs",
+      "sku": "PST-001",
+      "description": "Flaky French butter pastry dengan roasted almond flakes",
+      "isActive": true
+    },
+    {
+      "id": "prod-5",
+      "name": "Artisan Cinnamon Roll",
+      "category": "Pastry",
+      "price": 24000,
+      "costPrice": 11000,
+      "stock": 15,
+      "unit": "pcs",
+      "sku": "PST-002",
+      "description": "Cream cheese glaze lembut dengan kayu manis ceylon wangi",
+      "isActive": true
+    },
+    {
+      "id": "prod-6",
+      "name": "Sourdough Toast & Kaya",
+      "category": "Makanan",
+      "price": 28000,
+      "costPrice": 12500,
+      "stock": 24,
+      "unit": "porsi",
+      "sku": "FOD-001",
+      "description": "Roti sourdough panggang dengan selai srikaya pandan & butter",
+      "isActive": true
+    },
+    {
+      "id": "prod-7",
+      "name": "Linen Tote Bag Natural",
+      "category": "Merchandise",
+      "price": 75000,
+      "costPrice": 38000,
+      "stock": 12,
+      "unit": "pcs",
+      "sku": "MCH-001",
+      "description": "Tas kanvas katun organik 100% minimalis ramah lingkungan",
+      "isActive": true
+    },
+    {
+      "id": "prod-8",
+      "name": "Ceramic Mug Off-White 250ml",
+      "category": "Merchandise",
+      "price": 65000,
+      "costPrice": 30000,
+      "stock": 10,
+      "unit": "pcs",
+      "sku": "MCH-002",
+      "description": "Cangkir keramik handmade matte texture",
+      "isActive": true
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust-1",
+      "name": "Budi Santoso",
+      "phone": "081234567890",
+      "email": "budi.santoso@email.com",
+      "address": "Kebayoran Baru, Jakarta Selatan",
+      "totalSpent": 188000,
+      "ordersCount": 4,
+      "firstVisit": "2026-09-19T08:00:59.752Z",
+      "lastVisit": "2026-10-02T08:00:59.753Z",
+      "notes": "Suka kopi less sugar, pelanggan tetap"
+    },
+    {
+      "id": "cust-2",
+      "name": "Siti Rahma",
+      "phone": "085712345678",
+      "email": "siti.rahma@email.com",
+      "address": "Tebet Barat, Jakarta",
+      "totalSpent": 124000,
+      "ordersCount": 2,
+      "firstVisit": "2026-09-25T08:00:59.753Z",
+      "lastVisit": "2026-10-01T08:00:59.753Z",
+      "notes": "Favorit: Matcha Latte Uji"
+    },
+    {
+      "id": "cust-3",
+      "name": "Dimas Wicaksono",
+      "phone": "081899887766",
+      "email": "dimas.w@email.com",
+      "totalSpent": 75000,
+      "ordersCount": 1,
+      "firstVisit": "2026-09-30T08:00:59.753Z",
+      "lastVisit": "2026-09-30T08:00:59.753Z",
+      "notes": "Beli tote bag merchandise"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord-101",
+      "invoiceNumber": "INV-20260928-001",
+      "customerId": "cust-1",
+      "customerName": "Budi Santoso",
+      "customerPhone": "081234567890",
+      "items": [
+        {
+          "productId": "prod-1",
+          "productName": "Kopi Susu Aren Special",
+          "price": 22000,
+          "costPrice": 9500,
+          "quantity": 2,
+          "subtotal": 44000
+        },
+        {
+          "productId": "prod-4",
+          "productName": "Almond Butter Croissant",
+          "price": 26000,
+          "costPrice": 13000,
+          "quantity": 1,
+          "subtotal": 26000
+        }
+      ],
+      "subtotal": 70000,
+      "discount": 0,
+      "tax": 0,
+      "total": 70000,
+      "paymentMethod": "qris",
+      "paymentStatus": "lunas",
+      "createdAt": "2026-10-01T08:00:59.753Z",
+      "notes": "Meja 03"
+    },
+    {
+      "id": "ord-102",
+      "invoiceNumber": "INV-20260929-002",
+      "customerId": "cust-2",
+      "customerName": "Siti Rahma",
+      "customerPhone": "085712345678",
+      "items": [
+        {
+          "productId": "prod-2",
+          "productName": "Matcha Latte Uji",
+          "price": 28000,
+          "costPrice": 12000,
+          "quantity": 2,
+          "subtotal": 56000
+        },
+        {
+          "productId": "prod-5",
+          "productName": "Artisan Cinnamon Roll",
+          "price": 24000,
+          "costPrice": 11000,
+          "quantity": 1,
+          "subtotal": 24000
+        }
+      ],
+      "subtotal": 80000,
+      "discount": 5000,
+      "tax": 0,
+      "total": 75000,
+      "paymentMethod": "tunai",
+      "paymentStatus": "lunas",
+      "cashGiven": 100000,
+      "cashChange": 25000,
+      "createdAt": "2026-10-02T08:00:59.753Z",
+      "notes": "Takeaway"
+    }
+  ]
+}

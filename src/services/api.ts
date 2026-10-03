@@ -203,4 +203,17 @@ VALUES ('${p.id}', '${p.name.replace(/'/g, "''")}', '${p.category}', ${p.price},
 ON CONFLICT (id) DO NOTHING;`).join('\n')}
 `;
   },
+
+  async importBackup(data: any): Promise<{ success: boolean; message: string; counts: { products: number; customers: number; orders: number } }> {
+    const res = await fetch(`${API_BASE}/backup/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || 'Gagal memulihkan database dari file cadangan.');
+    }
+    return res.json();
+  },
 };

@@ -110,8 +110,8 @@ const toSettings = (r: any): StoreSettings =>
   }) as StoreSettings;
 
 const DEFAULT_SETTINGS: StoreSettings = {
-  storeName: 'KOMA MINIMAL STORE',
-  tagline: 'Coffee & Daily Goods',
+  storeName: 'JERES STUDIO',
+  tagline: 'Toko & Kasir HP',
   address: 'Jl. Senopati No. 42, Jakarta Selatan',
   phone: '0812-8899-7722',
   receiptFooter: 'Terima kasih atas kunjungan Anda!\nBarang yang sudah dibeli tidak dapat ditukar.',
@@ -119,7 +119,7 @@ const DEFAULT_SETTINGS: StoreSettings = {
   taxPercent: 11,
   enableTax: false,
   currency: 'IDR',
-  qrisCodeText: '00020101021226590014ID.LINKAJA.WWW011893600911002234010202150000000000000005204581253033605802ID5914KOMA MINIMAL6007JAKARTA61051219062070703A01630454D1',
+  qrisCodeText: '00020101021226590014ID.LINKAJA.WWW011893600911002234010202150000000000000005204581253033605802ID5914JERES STUDIO6007JAKARTA61051219062070703A01630454D1',
   qrisImageUrl: '',
   cloudinaryCloudName: 'kios-minimalis',
   cloudinaryUploadPreset: 'ml_default',

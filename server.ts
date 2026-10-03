@@ -212,6 +212,12 @@ app.post('/api/neon/sync', async (req, res) => {
   }
 });
 
+// Import & Restore Database Backup JSON
+app.post('/api/backup/import', wrap(async (req, res) => {
+  const result = await serverDb.importBackup(req.body);
+  res.json(result);
+}));
+
 // Dev server lokal saja (di Vercel tidak dijalankan)
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

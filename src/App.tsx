@@ -20,8 +20,8 @@ export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<StoreSettings>({
-    storeName: 'KOMA MINIMAL STORE',
-    tagline: 'Coffee & Daily Goods',
+    storeName: 'JERES STUDIO',
+    tagline: 'Toko & Kasir HP',
     address: 'Jl. Senopati No. 42, Jakarta Selatan',
     phone: '0812-8899-7722',
     receiptFooter: 'Terima kasih atas kunjungan Anda!\nBarang yang sudah dibeli tidak dapat ditukar.',
@@ -74,6 +74,12 @@ export default function App() {
   useEffect(() => {
     refreshDatabase();
   }, []);
+
+  useEffect(() => {
+    if (settings.storeName) {
+      document.title = `${settings.storeName} - Toko & Kasir HP`;
+    }
+  }, [settings.storeName]);
 
   const handleToggleTheme = async () => {
     const nextTheme: 'light' | 'dark' = theme === 'light' ? 'dark' : 'light';

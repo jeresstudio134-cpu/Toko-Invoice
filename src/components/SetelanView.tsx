@@ -22,6 +22,7 @@ import {
   Unlock,
   KeyRound,
   Download,
+  Upload,
   AlertTriangle,
   RefreshCw,
   LogOut,
@@ -92,6 +93,8 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
 
   const [savedSettingsNotice, setSavedSettingsNotice] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState<{ text: string; success: boolean } | null>(null);
 
   // Product edit modal / form state
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -375,6 +378,51 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
     a.download = `backup_kios_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!confirm(`Apakah Anda yakin ingin memulihkan database dari file cadangan "${file.name}"? Data toko, menu, dan pelanggan akan diperbarui.`)) {
+      return;
+    }
+
+    setIsImporting(true);
+    setImportNotice(null);
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Format file JSON tidak valid.');
+      }
+
+      const res = await ApiService.importBackup(parsed);
+      if (parsed.store) {
+        onUpdateSettings({ ...settings, ...parsed.store });
+      }
+      if (parsed.products && Array.isArray(parsed.products)) {
+        onUpdateProducts(parsed.products);
+      }
+
+      setImportNotice({
+        text: `Sukses! ${res.counts.products} produk, ${res.counts.customers} pelanggan, dan ${res.counts.orders} nota berhasil dipulihkan. Halaman akan disegarkan...`,
+        success: true,
+      });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err: any) {
+      setImportNotice({
+        text: `Gagal memulihkan cadangan: ${err.message}`,
+        success: false,
+      });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // -------------------------------------------------------------
@@ -1024,33 +1072,79 @@ export const SetelanView: React.FC<SetelanViewProps> = ({
             )}
           </form>
 
-          {/* Backup Database Toko */}
+          {/* Backup & Restore Database Toko */}
           <div
-            className={`border rounded-2xl p-4 space-y-3 ${
+            className={`border rounded-2xl p-4 space-y-3.5 ${
               isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-200 shadow-xs'
             }`}
           >
             <div className="flex items-center gap-2">
-              <Download className="w-4 h-4 text-neutral-500" />
+              <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <h3 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-neutral-900'}`}>
-                Cadangan & Ekspor Database (JSON)
+                Cadangan & Pemulihan Database (JSON)
               </h3>
             </div>
             <p className="text-[11px] text-neutral-500 leading-relaxed">
-              Unduh seluruh database (produk, stok, customer CRM otomatis, riwayat nota) sebagai file cadangan JSON.
+              Unduh salinan cadangan seluruh database (produk, stok, customer, riwayat nota) atau pulihkan data toko dari file JSON yang pernah Anda simpan.
             </p>
 
-            <button
-              onClick={handleBackupJson}
-              className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border active:scale-95 transition-all flex items-center justify-center gap-2 ${
-                isDark
-                  ? 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-750'
-                  : 'bg-neutral-100 border-neutral-200 text-neutral-800 hover:bg-neutral-200'
-              }`}
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download File Cadangan JSON</span>
-            </button>
+            <div className="space-y-2">
+              {/* Tombol Unduh / Ekspor */}
+              <button
+                type="button"
+                onClick={handleBackupJson}
+                className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                  isDark
+                    ? 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-750'
+                    : 'bg-neutral-100 border-neutral-200 text-neutral-800 hover:bg-neutral-200'
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>1. Download File Cadangan JSON</span>
+              </button>
+
+              {/* Tombol Unggah / Impor */}
+              <label
+                className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 ${
+                  isImporting
+                    ? 'opacity-50 pointer-events-none'
+                    : isDark
+                    ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-400 hover:bg-emerald-900/50'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                }`}
+              >
+                {isImporting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memulihkan Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>2. Upload & Pulihkan File JSON</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleImportJson}
+                  disabled={isImporting}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {importNotice && (
+              <div
+                className={`p-2.5 rounded-xl text-center text-xs font-bold border leading-relaxed ${
+                  importNotice.success
+                    ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
+                }`}
+              >
+                {importNotice.text}
+              </div>
+            )}
           </div>
         </div>
       )}
